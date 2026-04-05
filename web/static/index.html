@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#e94560">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <link rel="manifest" href="/manifest.json">
+    <title>LocalVideoServer</title>
+    <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>LocalVideoServer</h1>
+            <div class="controls">
+                <input type="text" id="searchInput" placeholder="Search videos...">
+                <button id="searchBtn">Search</button>
+                <button id="randomBtn">Random</button>
+                <button id="historyBtn">History</button>
+                <button id="favoritesBtn">Favorites</button>
+                <button id="blacklistBtn">Blacklist</button>
+                <button id="allVideosBtn">All Videos</button>
+            </div>
+        </header>
+        
+        <main>
+            <div id="videoList" class="video-grid"></div>
+            <div id="loading" class="loading" style="display: none;">
+                <div class="spinner"></div>
+                <p>Loading...</p>
+            </div>
+            <div id="emptyMessage" class="empty" style="display: none;">No videos found</div>
+        </main>
+        
+        <div id="videoModal" class="modal">
+            <div class="modal-content">
+                <span class="close">&times;</span>
+                <div class="video-container">
+                    <video id="videoPlayer" controls></video>
+                </div>
+                <div class="video-info">
+                    <h2 id="videoTitle"></h2>
+                    <p id="videoPath"></p>
+                    <div class="video-actions">
+                        <button id="toggleFavoriteBtn">Add to Favorites</button>
+                        <button id="playRandomBtn">Play Random</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div id="historyModal" class="modal">
+            <div class="modal-content">
+                <span class="close">&times;</span>
+                <h2>Playback History</h2>
+                <div id="historyList"></div>
+                <button id="clearHistoryBtn" class="danger">Clear History</button>
+            </div>
+        </div>
+        
+        <div id="favoritesModal" class="modal">
+            <div class="modal-content">
+                <span class="close">&times;</span>
+                <h2>Favorites</h2>
+                <div id="favoritesList"></div>
+            </div>
+        </div>
+        
+        <div id="blacklistModal" class="modal">
+            <div class="modal-content">
+                <span class="close">&times;</span>
+                <h2>Blacklist</h2>
+                <div class="blacklist-input">
+                    <input type="text" id="blacklistInput" placeholder="Enter directory path...">
+                    <button id="addBlacklistBtn">Add</button>
+                </div>
+                <div id="blacklistList"></div>
+            </div>
+        </div>
+        
+        <div id="resumeModal" class="modal">
+            <div class="modal-content resume-content">
+                <h2>Resume playback?</h2>
+                <p id="resumeVideoTitle"></p>
+                <p id="resumePosition"></p>
+                <div class="resume-buttons">
+                    <button id="resumeFromBeginning" class="secondary">Play from beginning</button>
+                    <button id="resumeFromPosition">Resume</button>
+                </div>
+            </div>
+        </div>
+        
+        <div id="toastContainer" class="toast-container"></div>
+    </div>
+    
+    <script src="/js/app.js"></script>
+    <script>
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('/sw.js').catch(function() {});
+        }
+    </script>
+</body>
+</html>
