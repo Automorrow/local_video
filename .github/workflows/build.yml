@@ -1,0 +1,116 @@
+name: Build
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:  # 允许手动触发
+
+jobs:
+  build-linux:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y cmake sqlite3 libsqlite3-dev
+    
+    - name: Configure CMake
+      run: cmake -B build -DCMAKE_BUILD_TYPE=Release
+    
+    - name: Build
+      run: cmake --build build --config Release -j$(nproc)
+    
+    - name: Run tests
+      run: |
+        cd build/bin
+        ./test_module
+        ./test_list
+        ./test_notifier
+        ./test_log
+        ./test_thread
+        ./test_json
+        ./test_db
+      continue-on-error: true
+    
+    - name: Upload Linux binary
+      uses: actions/upload-artifact@v3
+      with:
+        name: local_video-linux
+        path: build/bin/local_video
+
+  build-windows:
+    runs-on: windows-latest
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Setup MSYS2
+      uses: msys2/setup-msys2@v2
+      with:
+        msystem: MINGW64
+        update: true
+        install: >
+          mingw-w64-x86_64-gcc
+          mingw-w64-x86_64-cmake
+          mingw-w64-x86_64-sqlite3
+          mingw-w64-x86_64-pkg-config
+    
+    - name: Build with MSYS2
+      shell: msys2 {0}
+      run: |
+        mkdir build && cd build
+        cmake .. -G "MinGW Makefiles" -DCMAKE_BUILD_TYPE=Release
+        mingw32-make -j$(nproc)
+    
+    - name: Collect Windows files
+      shell: msys2 {0}
+      run: |
+        mkdir -p dist
+        cp build/bin/local_video.exe dist/
+        cp /mingw64/bin/sqlite3.dll dist/
+        cp -r web dist/
+        echo "@echo off" > dist/start.bat
+        echo "local_video.exe --port 8080 --video-dir ./videos" >> dist/start.bat
+    
+    - name: Upload Windows binary
+      uses: actions/upload-artifact@v3
+      with:
+        name: local_video-windows
+        path: dist/
+
+  release:
+    needs: [build-linux, build-windows]
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
+    
+    steps:
+    - name: Download Linux artifact
+      uses: actions/download-artifact@v3
+      with:
+        name: local_video-linux
+        path: release/linux
+    
+    - name: Download Windows artifact
+      uses: actions/download-artifact@v3
+      with:
+        name: local_video-windows
+        path: release/windows
+    
+    - name: Create release archives
+      run: |
+        chmod +x release/linux/local_video
+        tar -czf local_video-linux.tar.gz -C release/linux .
+        zip -r local_video-windows.zip release/windows/*
+    
+    - name: Upload Release Assets
+      uses: actions/upload-artifact@v3
+      with:
+        name: release-packages
+        path: |
+          local_video-linux.tar.gz
+          local_video-windows.zip
