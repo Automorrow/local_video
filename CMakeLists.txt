@@ -1,6 +1,8 @@
 cmake_minimum_required(VERSION 3.10)
 project(LocalVideoServer C)
 
+enable_testing()
+
 set(CMAKE_C_STANDARD 99)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 
@@ -60,15 +62,26 @@ set(CORE_SOURCES
     src/shared/platform/platform.c
     src/modules/config/config.c
     src/modules/db_manager/db_manager.c
+    src/modules/db_manager/db_manager_video.c
+    src/modules/db_manager/db_manager_user.c
+    src/modules/db_manager/db_manager_blacklist.c
     src/modules/http_server/http_server.c
+    src/modules/http_server/http_server_file.c
+    src/modules/http_server/http_server_thumbnail.c
+    src/modules/http_server/http_server_stream.c
     src/modules/http_server/http_request.c
     src/modules/http_server/http_response.c
     src/modules/api_handler/api_handler.c
+    src/modules/api_handler/api_response.c
+    src/modules/api_handler/api_utils.c
+    src/modules/api_handler/api_endpoints.c
 )
 
 # Linux-only sources
 set(LINUX_SOURCES
     src/modules/video_scanner/video_scanner.c
+    src/modules/video_scanner/video_scanner_watcher.c
+    src/modules/video_scanner/video_scanner_scan.c
 )
 
 # Include directories
@@ -145,8 +158,33 @@ if(NOT IS_WINDOWS)
     add_lv_test(test_json tests/unit/test_json.c src/shared/json/json.c)
     add_lv_test(test_db tests/unit/test_db_manager.c 
         src/modules/db_manager/db_manager.c
+        src/modules/db_manager/db_manager_video.c
+        src/modules/db_manager/db_manager_user.c
+        src/modules/db_manager/db_manager_blacklist.c
         src/modules/config/config.c
         src/shared/thread/thread.c
         src/shared/log/log.c
     )
+    add_lv_test(test_video_scanner tests/unit/test_video_scanner.c
+        src/modules/video_scanner/video_scanner.c
+        src/modules/video_scanner/video_scanner_watcher.c
+        src/modules/video_scanner/video_scanner_scan.c
+        src/modules/db_manager/db_manager.c
+        src/modules/db_manager/db_manager_video.c
+        src/modules/db_manager/db_manager_user.c
+        src/modules/db_manager/db_manager_blacklist.c
+        src/modules/config/config.c
+        src/shared/module/module.c
+        src/shared/thread/thread.c
+        src/shared/log/log.c
+    )
+
+    add_test(NAME test_module COMMAND test_module WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    add_test(NAME test_list COMMAND test_list WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    add_test(NAME test_notifier COMMAND test_notifier WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    add_test(NAME test_log COMMAND test_log WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    add_test(NAME test_thread COMMAND test_thread WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    add_test(NAME test_json COMMAND test_json WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    add_test(NAME test_db COMMAND test_db WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    add_test(NAME test_video_scanner COMMAND test_video_scanner WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 endif()
