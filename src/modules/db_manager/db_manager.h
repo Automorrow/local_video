@@ -1,7 +1,7 @@
 #ifndef DB_MANAGER_H
 #define DB_MANAGER_H
 
-#include "local_video.h"
+#include "../../include/local_video.h"
 #include <sqlite3.h>
 
 typedef struct {
