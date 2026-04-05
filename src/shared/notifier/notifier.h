@@ -1,8 +1,8 @@
 #ifndef NOTIFIER_H
 #define NOTIFIER_H
 
-#include "local_video.h"
-#include "list.h"
+#include "../../include/local_video.h"
+#include "../list/list.h"
 
 /* Notifier return codes */
 typedef enum {

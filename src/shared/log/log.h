@@ -1,7 +1,7 @@
 #ifndef LOG_H
 #define LOG_H
 
-#include "local_video.h"
+#include "../../include/local_video.h"
 #include <stdio.h>
 #include <stdarg.h>
 

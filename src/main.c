@@ -1,9 +1,9 @@
-#include "local_video.h"
-#include "module.h"
-#include "log.h"
-#include "config.h"
-#include "http_server.h"
-#include "platform.h"
+#include "include/local_video.h"
+#include "shared/module/module.h"
+#include "shared/log/log.h"
+#include "modules/config/config.h"
+#include "modules/http_server/http_server.h"
+#include "include/platform.h"
 #include <stdio.h>
 #include <signal.h>
 

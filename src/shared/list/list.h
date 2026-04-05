@@ -1,7 +1,7 @@
 #ifndef LIST_H
 #define LIST_H
 
-#include "local_video.h"
+#include "../../include/local_video.h"
 
 /* Intrusive linked list node */
 struct list_node {

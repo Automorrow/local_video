@@ -1,7 +1,7 @@
 #ifndef THREAD_H
 #define THREAD_H
 
-#include "local_video.h"
+#include "../../include/local_video.h"
 #include <pthread.h>
 
 typedef struct {

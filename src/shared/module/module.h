@@ -1,7 +1,7 @@
 #ifndef MODULE_H
 #define MODULE_H
 
-#include "local_video.h"
+#include "../../include/local_video.h"
 
 #define MODULE_INIT(fn, module_name) \
     __attribute__((used, section(".embedi_init"))) \

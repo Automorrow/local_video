@@ -1,5 +1,5 @@
-#include "platform.h"
-#include "log.h"
+#include "../../include/platform.h"
+#include "../log/log.h"
 
 #ifdef _WIN32
 
