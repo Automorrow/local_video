@@ -1,7 +1,7 @@
 #ifndef HTTP_RESPONSE_H
 #define HTTP_RESPONSE_H
 
-#include "local_video.h"
+#include "../../include/local_video.h"
 #include <stdbool.h>
 
 #define HTTP_CONTENT_TYPE_MAX 64

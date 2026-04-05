@@ -1,6 +1,6 @@
 #include "http_response.h"
-#include "log.h"
-#include "platform.h"
+#include "../../shared/log/log.h"
+#include "../../include/platform.h"
 #include <stdio.h>
 #include <string.h>
 

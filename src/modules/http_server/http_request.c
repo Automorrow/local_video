@@ -1,6 +1,6 @@
 #include "http_request.h"
-#include "log.h"
-#include "platform.h"
+#include "../../shared/log/log.h"
+#include "../../include/platform.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
