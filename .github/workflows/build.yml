@@ -27,15 +27,8 @@ jobs:
     
     - name: Run tests
       run: |
-        cd build/bin
-        ./test_module
-        ./test_list
-        ./test_notifier
-        ./test_log
-        ./test_thread
-        ./test_json
-        ./test_db
-      continue-on-error: true
+        cd build
+        ctest --output-on-failure
     
     - name: Upload Linux binary
       uses: actions/upload-artifact@v3
