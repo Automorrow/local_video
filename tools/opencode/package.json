@@ -1,0 +1,22 @@
+{
+  "name": "local_video",
+  "version": "1.0.0",
+  "description": "轻量级本地视频服务器，支持在不同设备上通过网页观看和管理本地视频文件。",
+  "main": "generate_config.js",
+  "directories": {
+    "doc": "docs",
+    "test": "tests"
+  },
+  "scripts": {
+    "parse-models": "node parse_models.js",
+    "generate-config": "node generate_config.js",
+    "generate-correct-config": "node generate_correct_config.js",
+    "generate-proper-config": "node generate_proper_config.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@tarquinen/opencode-dcp": "^3.1.7"
+  }
+}
