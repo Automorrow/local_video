@@ -56,8 +56,10 @@ jobs:
     - name: Build with MSYS2
       shell: msys2 {0}
       run: |
-        mkdir build && cd build
-        cmake .. -G "MinGW Makefiles" -DCMAKE_BUILD_TYPE=Release
+        export PATH="/mingw64/bin:$PATH"
+        which mingw32-make || which make
+        mkdir -p build && cd build
+        cmake .. -G "MinGW Makefiles" -DCMAKE_BUILD_TYPE=Release -DCMAKE_MAKE_PROGRAM=mingw32-make
         mingw32-make -j$(nproc)
     
     - name: Collect Windows files
