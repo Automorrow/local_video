@@ -25,10 +25,10 @@ jobs:
     - name: Build
       run: cmake --build build --config Release -j$(nproc)
     
-    - name: Run tests
+    - name: Run tests (CTest)
       run: |
         cd build
-        ctest --output-on-failure
+        ctest -j $(nproc) --output-on-failure
     
     - name: Upload Linux binary
       uses: actions/upload-artifact@v4
