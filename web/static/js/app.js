@@ -8,20 +8,21 @@ const state = {
     favorites: new Set(),
     blacklist: [],
     searchTimeout: null,
-    pendingVideo: null
+    pendingVideo: null,
+    currentQuery: ''
 };
 
 const elements = {
     videoList: document.getElementById('videoList'),
     loading: document.getElementById('loading'),
+    loadingMessage: document.getElementById('loadingMessage'),
     emptyMessage: document.getElementById('emptyMessage'),
+    resultsStatus: document.getElementById('resultsStatus'),
     searchInput: document.getElementById('searchInput'),
-    searchBtn: document.getElementById('searchBtn'),
     randomBtn: document.getElementById('randomBtn'),
     historyBtn: document.getElementById('historyBtn'),
     favoritesBtn: document.getElementById('favoritesBtn'),
     blacklistBtn: document.getElementById('blacklistBtn'),
-    allVideosBtn: document.getElementById('allVideosBtn'),
     videoModal: document.getElementById('videoModal'),
     videoPlayer: document.getElementById('videoPlayer'),
     videoTitle: document.getElementById('videoTitle'),
@@ -72,17 +73,29 @@ function formatPosition(seconds) {
     return `${mins}:${secs.toString().padStart(2, '0')}`;
 }
 
-function showLoading() {
+function setResultsStatus(message, type = 'info') {
+    elements.resultsStatus.textContent = message;
+    elements.resultsStatus.classList.toggle('error', type === 'error');
+}
+
+function showLoading(searchQuery = '') {
     elements.loading.style.display = 'block';
     elements.emptyMessage.style.display = 'none';
     elements.videoList.style.display = 'none';
+    elements.emptyMessage.classList.remove('error');
+    elements.loadingMessage.textContent = searchQuery
+        ? `Searching for “${searchQuery}”...`
+        : 'Loading your video library...';
+    setResultsStatus(searchQuery ? `Searching for “${searchQuery}”...` : 'Loading all videos...');
 }
 
 function hideLoading() {
     elements.loading.style.display = 'none';
 }
 
-function showEmpty() {
+function showEmpty(message, type = 'info') {
+    elements.emptyMessage.textContent = message;
+    elements.emptyMessage.classList.toggle('error', type === 'error');
     elements.emptyMessage.style.display = 'block';
     elements.videoList.style.display = 'none';
 }
@@ -91,6 +104,27 @@ function showVideos() {
     elements.loading.style.display = 'none';
     elements.emptyMessage.style.display = 'none';
     elements.videoList.style.display = 'grid';
+}
+
+function updateVideoStatus(count, searchQuery = '') {
+    if (searchQuery) {
+        if (count === 0) {
+            setResultsStatus(`No matches for “${searchQuery}”.`, 'info');
+        } else if (count === 1) {
+            setResultsStatus(`Showing 1 result for “${searchQuery}”.`, 'info');
+        } else {
+            setResultsStatus(`Showing ${count} results for “${searchQuery}”.`, 'info');
+        }
+        return;
+    }
+
+    if (count === 0) {
+        setResultsStatus('No videos are available yet. Add files to your video directory and refresh.', 'info');
+    } else if (count === 1) {
+        setResultsStatus('Showing your video library: 1 video.', 'info');
+    } else {
+        setResultsStatus(`Showing your video library: ${count} videos.`, 'info');
+    }
 }
 
 async function fetchJSON(url, options = {}) {
@@ -105,18 +139,40 @@ async function fetchJSON(url, options = {}) {
 }
 
 async function loadVideos(searchQuery = '') {
-    showLoading();
+    const normalizedQuery = searchQuery.trim();
+    state.currentQuery = normalizedQuery;
+    showLoading(normalizedQuery);
     let url = API_BASE + '/videos';
     const params = [];
-    if (searchQuery) params.push(`search=${encodeURIComponent(searchQuery)}`);
+    if (normalizedQuery) params.push(`search=${encodeURIComponent(normalizedQuery)}`);
     if (params.length > 0) url += '?' + params.join('&');
-    
-    const data = await fetchJSON(url);
-    if (data && Array.isArray(data)) {
-        state.videos = data;
-        renderVideos(data);
-    } else {
-        showEmpty();
+
+    try {
+        const response = await fetch(url);
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+        }
+
+        const data = await response.json();
+        if (Array.isArray(data)) {
+            state.videos = data;
+            renderVideos(data);
+            updateVideoStatus(data.length, normalizedQuery);
+            return;
+        }
+
+        throw new Error('Invalid response payload');
+    } catch (error) {
+        console.error('Failed to load videos:', error);
+        state.videos = [];
+        hideLoading();
+        if (normalizedQuery) {
+            showEmpty(`No videos matched “${normalizedQuery}”. Try a different title or clear the search.`);
+            setResultsStatus(`Search failed or returned no usable data for “${normalizedQuery}”. Try again or clear the filter.`, 'error');
+        } else {
+            showEmpty('Unable to load your video library. Check that the server is running and try refreshing the page.', 'error');
+            setResultsStatus('Could not load videos from the server.', 'error');
+        }
     }
 }
 
@@ -261,7 +317,11 @@ async function clearHistory() {
 function renderVideos(videos) {
     hideLoading();
     if (!videos || videos.length === 0) {
-        showEmpty();
+        if (state.currentQuery) {
+            showEmpty(`No videos matched “${state.currentQuery}”. Try a different title or clear the search.`);
+        } else {
+            showEmpty('No videos are available yet. Add files to your video directory and refresh.');
+        }
         return;
     }
     showVideos();
@@ -452,10 +512,6 @@ function closeModal(modal) {
 }
 
 function initEventListeners() {
-    elements.searchBtn.addEventListener('click', () => {
-        loadVideos(elements.searchInput.value);
-    });
-    
     elements.searchInput.addEventListener('input', (e) => {
         debouncedSearch(e.target.value);
     });
@@ -471,11 +527,6 @@ function initEventListeners() {
     elements.historyBtn.addEventListener('click', getHistory);
     elements.favoritesBtn.addEventListener('click', getFavorites);
     elements.blacklistBtn.addEventListener('click', getBlacklist);
-    
-    elements.allVideosBtn.addEventListener('click', () => {
-        elements.searchInput.value = '';
-        loadVideos();
-    });
     
     elements.toggleFavoriteBtn.addEventListener('click', () => {
         if (state.currentVideo) {

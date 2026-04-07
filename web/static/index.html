@@ -15,13 +15,15 @@
         <header>
             <h1>LocalVideoServer</h1>
             <div class="controls">
-                <input type="text" id="searchInput" placeholder="Search videos...">
-                <button id="searchBtn">Search</button>
+                <input type="text" id="searchInput" placeholder="Search by title..." aria-label="Search videos by title">
                 <button id="randomBtn">Random</button>
                 <button id="historyBtn">History</button>
                 <button id="favoritesBtn">Favorites</button>
                 <button id="blacklistBtn">Blacklist</button>
-                <button id="allVideosBtn">All Videos</button>
+            </div>
+            <div class="search-meta">
+                <p class="search-hint">Type to search instantly, or press Enter to search now.</p>
+                <p id="resultsStatus" class="results-status" aria-live="polite">Loading your video library...</p>
             </div>
         </header>
         
@@ -29,7 +31,7 @@
             <div id="videoList" class="video-grid"></div>
             <div id="loading" class="loading" style="display: none;">
                 <div class="spinner"></div>
-                <p>Loading...</p>
+                <p id="loadingMessage">Loading...</p>
             </div>
             <div id="emptyMessage" class="empty" style="display: none;">No videos found</div>
         </main>

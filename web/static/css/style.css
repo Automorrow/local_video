@@ -40,6 +40,25 @@ header h1 {
     margin-bottom: 20px;
 }
 
+.search-meta {
+    margin-top: 12px;
+}
+
+.search-hint {
+    color: var(--text-secondary);
+    font-size: 13px;
+}
+
+.results-status {
+    margin-top: 8px;
+    color: var(--text-primary);
+    font-size: 14px;
+}
+
+.results-status.error {
+    color: #ff9b9b;
+}
+
 .controls {
     display: flex;
     gap: 10px;
@@ -98,6 +117,10 @@ button.active {
     text-align: center;
     padding: 40px;
     color: var(--text-secondary);
+}
+
+.empty.error {
+    color: #ffb3b3;
 }
 
 .spinner {
@@ -420,6 +443,10 @@ video {
 @media (max-width: 600px) {
     .controls {
         flex-direction: column;
+    }
+
+    .search-meta {
+        text-align: left;
     }
     
     input[type="text"], select {

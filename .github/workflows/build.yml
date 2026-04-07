@@ -31,7 +31,7 @@ jobs:
         ctest --output-on-failure
     
     - name: Upload Linux binary
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: local_video-linux
         path: build/bin/local_video
@@ -71,7 +71,7 @@ jobs:
         echo "local_video.exe --port 8080 --video-dir ./videos" >> dist/start.bat
     
     - name: Upload Windows binary
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: local_video-windows
         path: dist/
@@ -83,13 +83,13 @@ jobs:
     
     steps:
     - name: Download Linux artifact
-      uses: actions/download-artifact@v3
+      uses: actions/download-artifact@v4
       with:
         name: local_video-linux
         path: release/linux
     
     - name: Download Windows artifact
-      uses: actions/download-artifact@v3
+      uses: actions/download-artifact@v4
       with:
         name: local_video-windows
         path: release/windows
@@ -101,7 +101,7 @@ jobs:
         zip -r local_video-windows.zip release/windows/*
     
     - name: Upload Release Assets
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: release-packages
         path: |

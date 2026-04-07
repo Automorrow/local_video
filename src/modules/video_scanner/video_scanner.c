@@ -7,7 +7,6 @@
 #include <string.h>
 
 volatile int watcher_running = 0;
-int watcher_thread_started = 0;
 int inotify_fd = -1;
 int epoll_fd = -1;
 pthread_t watcher_thread;
