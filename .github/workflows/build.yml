@@ -50,6 +50,7 @@ jobs:
         install: >
           mingw-w64-x86_64-gcc
           mingw-w64-x86_64-cmake
+          mingw-w64-x86_64-make
           mingw-w64-x86_64-sqlite3
           mingw-w64-x86_64-pkg-config
     
@@ -57,9 +58,8 @@ jobs:
       shell: msys2 {0}
       run: |
         export PATH="/mingw64/bin:$PATH"
-        which mingw32-make || which make
         mkdir -p build && cd build
-        cmake .. -G "MinGW Makefiles" -DCMAKE_BUILD_TYPE=Release -DCMAKE_MAKE_PROGRAM=mingw32-make
+        cmake .. -G "MinGW Makefiles" -DCMAKE_BUILD_TYPE=Release -DCMAKE_MAKE_PROGRAM=/mingw64/bin/mingw32-make.exe
         mingw32-make -j$(nproc)
     
     - name: Collect Windows files
