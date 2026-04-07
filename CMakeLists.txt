@@ -132,6 +132,8 @@ endif()
 # Linker options
 if(NOT IS_WINDOWS)
     target_link_options(local_video PRIVATE -T ${CMAKE_SOURCE_DIR}/linker.ld)
+else()
+    target_link_options(local_video PRIVATE -T ${CMAKE_SOURCE_DIR}/linker-mingw.ld)
 endif()
 
 # Link libraries
