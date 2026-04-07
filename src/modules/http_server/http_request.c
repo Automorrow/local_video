@@ -57,11 +57,11 @@ static int parse_request_line(const char *line, HttpRequest *req)
         req->path[path_len] = '\0';
         
         /* Copy query part */
-        strncpy(req->query, question_mark + 1, HTTP_PATH_MAX - 1);
+        strncpy(req->query, question_mark + 1, HTTP_PATH_MAX);
         req->query[HTTP_PATH_MAX - 1] = '\0';
     } else {
         /* No query string */
-        strncpy(req->path, path_with_query, HTTP_PATH_MAX - 1);
+        strncpy(req->path, path_with_query, HTTP_PATH_MAX);
         req->path[HTTP_PATH_MAX - 1] = '\0';
         req->query[0] = '\0';
     }
