@@ -30,11 +30,19 @@ jobs:
         cd build
         ctest -j $(nproc) --output-on-failure
     
+    - name: Collect Linux files
+      run: |
+        mkdir -p dist
+        cp build/bin/local_video dist/
+        echo "## ⚖️ 法律免责声明" > dist/免责声明.txt
+        echo "" >> dist/免责声明.txt
+        echo "本项目仅供教育和合法用途。用户须自行承担遵守相关法律法规的责任。作者不对任何滥用或非法使用行为承担责任。" >> dist/免责声明.txt
+
     - name: Upload Linux binary
       uses: actions/upload-artifact@v4
       with:
         name: local_video-linux
-        path: build/bin/local_video
+        path: dist/
 
   build-windows:
     runs-on: windows-latest
@@ -74,6 +82,10 @@ jobs:
           awk '{print $3}' | sed 's/\\/\//g' | while read dll; do cp "$dll" dist/; done
         echo "@echo off" > dist/start.bat
         echo "local_video.exe --port 8080 --video-dir ./videos" >> dist/start.bat
+        # Add disclaimer
+        echo "## ⚖️ 法律免责声明" > dist/免责声明.txt
+        echo "" >> dist/免责声明.txt
+        echo "本项目仅供教育和合法用途。用户须自行承担遵守相关法律法规的责任。作者不对任何滥用或非法使用行为承担责任。" >> dist/免责声明.txt
     
     - name: Upload Windows binary
       uses: actions/upload-artifact@v4
