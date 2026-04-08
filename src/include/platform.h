@@ -12,14 +12,21 @@
     
     /* Windows compatibility macros */
     #define close(fd) _close(fd)
-    #define read _read
-    #define write _write
     #define lseek _lseek
     #define open _open
     #define strcasecmp _stricmp
     #define strncasecmp _strnicmp
     #define sleep(x) Sleep((x) * 1000)
     #define usleep(x) Sleep((x) / 1000)
+    
+    /*
+     * IMPORTANT: Do NOT define read/write as _read/_write.
+     * _read/_write only work with file descriptors (MSVCRT),
+     * NOT with sockets. Use recv/send instead, which work
+     * for both sockets and file descriptors in MinGW.
+     */
+    #define read(fd, buf, len) recv((fd), (buf), (len), 0)
+    #define write(fd, buf, len) send((fd), (buf), (len), 0)
     
     /* Windows socket compatibility */
     #define SHUT_RDWR SD_BOTH
