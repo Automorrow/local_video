@@ -67,7 +67,7 @@ jobs:
       run: |
         mkdir -p dist
         cp build/bin/local_video.exe dist/
-        cp /mingw64/bin/sqlite3.dll dist/
+        cp /mingw64/bin/libsqlite3-0.dll dist/sqlite3.dll
         cp -r web dist/
         echo "@echo off" > dist/start.bat
         echo "local_video.exe --port 8080 --video-dir ./videos" >> dist/start.bat
