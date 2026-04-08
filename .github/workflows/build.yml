@@ -92,12 +92,12 @@ jobs:
       run: |
         cd dist
         # Start server in background
-        ./local_video.exe --port 18080 &
+        ./local_video.exe --port 18080 > /tmp/server.log 2>&1 &
         SERVER_PID=$!
         
         # Wait for server to start
         for i in $(seq 1 10); do
-          if curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:18080/ 2>/dev/null | grep -q "200"; then
+          if curl -s -o /dev/null -w "%{http_code}" --max-time 3 http://127.0.0.1:18080/ 2>/dev/null | grep -q "200"; then
             echo "Server is ready"
             break
           fi
@@ -105,10 +105,14 @@ jobs:
         done
         
         # Test 1: Homepage returns 200 with HTML
-        HTTP_CODE=$(curl -s -o /tmp/smoke_body.html -w "%{http_code}" http://127.0.0.1:18080/)
+        HTTP_CODE=$(curl -s -o /tmp/smoke_body.html -w "%{http_code}" --max-time 5 http://127.0.0.1:18080/)
         echo "Homepage HTTP code: $HTTP_CODE"
         if [ "$HTTP_CODE" != "200" ]; then
           echo "FAIL: Homepage returned $HTTP_CODE"
+          echo "--- Response body ---"
+          cat /tmp/smoke_body.html 2>/dev/null || echo "(empty)"
+          echo "--- Server log ---"
+          cat /tmp/server.log
           kill $SERVER_PID 2>/dev/null
           exit 1
         fi
@@ -121,7 +125,7 @@ jobs:
         echo "PASS: Homepage OK"
         
         # Test 2: API returns valid JSON
-        HTTP_CODE=$(curl -s -o /tmp/smoke_api.json -w "%{http_code}" http://127.0.0.1:18080/api/videos)
+        HTTP_CODE=$(curl -s -o /tmp/smoke_api.json -w "%{http_code}" --max-time 5 http://127.0.0.1:18080/api/videos)
         echo "API HTTP code: $HTTP_CODE"
         if [ "$HTTP_CODE" != "200" ]; then
           echo "FAIL: API returned $HTTP_CODE"
@@ -131,7 +135,7 @@ jobs:
         echo "PASS: API OK"
         
         # Test 3: CSS is served
-        HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:18080/css/style.css)
+        HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 5 http://127.0.0.1:18080/css/style.css)
         echo "CSS HTTP code: $HTTP_CODE"
         if [ "$HTTP_CODE" != "200" ]; then
           echo "FAIL: CSS returned $HTTP_CODE"
@@ -141,7 +145,7 @@ jobs:
         echo "PASS: CSS OK"
         
         # Test 4: JS is served
-        HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:18080/js/app.js)
+        HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 5 http://127.0.0.1:18080/js/app.js)
         echo "JS HTTP code: $HTTP_CODE"
         if [ "$HTTP_CODE" != "200" ]; then
           echo "FAIL: JS returned $HTTP_CODE"

@@ -1,6 +1,7 @@
 #include "http_server_internal.h"
 #include "http_response.h"
 #include "../../include/platform.h"
+#include "../../shared/log/log.h"
 #include <errno.h>
 #include <fcntl.h>
 #include <stdio.h>
@@ -34,6 +35,7 @@ static lv_error_t write_all(int fd, const char *buffer, size_t len)
     while (written_total < len) {
         ssize_t written = net_write(fd, buffer + written_total, len - written_total);
         if (written < 0) {
+            log_error("net_write failed: errno=%d", errno);
             return LV_ERROR_IO;
         }
         written_total += (size_t)written;
@@ -67,18 +69,23 @@ lv_error_t http_server_send_file_response(int client_fd,
 
     fd = open(file_path, O_RDONLY);
     if (fd < 0) {
+        log_error("Failed to open file '%s': errno=%d", file_path, errno);
         if (errno == ENOENT) {
             return http_response_send_error(client_fd, 404, "File not found");
         }
         return http_response_send_error(client_fd, 500, "Server error");
     }
 
+    log_info("Serving file '%s' (fd=%d)", file_path, fd);
+
     if (fstat(fd, &st) < 0) {
+        log_error("Failed to fstat file '%s': errno=%d", file_path, errno);
         close(fd);
         return http_response_send_error(client_fd, 500, "Server error");
     }
 
     file_size = (int64_t)st.st_size;
+    log_info("File size: %ld bytes", (long)file_size);
     actual_start = 0;
     actual_end = file_size > 0 ? file_size - 1 : 0;
 
