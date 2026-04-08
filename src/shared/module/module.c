@@ -1,5 +1,53 @@
 #include "module.h"
 
+#ifdef WINDOWS_BUILD
+
+/* Windows: explicit registration tables */
+module_init_entry_t g_module_init_table[MAX_MODULE_ENTRIES];
+int g_module_init_count = 0;
+module_sub_entry_t g_module_sub_table[MAX_MODULE_ENTRIES];
+int g_module_sub_count = 0;
+module_run_entry_t g_module_run_table[MAX_MODULE_ENTRIES];
+int g_module_run_count = 0;
+module_exit_entry_t g_module_exit_table[MAX_MODULE_ENTRIES];
+int g_module_exit_count = 0;
+
+void module_init_all(void) {
+    for (int i = 0; i < g_module_init_count; i++) {
+        if (g_module_init_table[i].fn) {
+            g_module_init_table[i].fn();
+        }
+    }
+}
+
+void module_sub_all(void) {
+    for (int i = 0; i < g_module_sub_count; i++) {
+        if (g_module_sub_table[i].fn) {
+            g_module_sub_table[i].fn();
+        }
+    }
+}
+
+void module_run_all(void) {
+    for (int i = 0; i < g_module_run_count; i++) {
+        if (g_module_run_table[i].fn) {
+            g_module_run_table[i].fn();
+        }
+    }
+}
+
+void module_exit_all(void) {
+    for (int i = 0; i < g_module_exit_count; i++) {
+        if (g_module_exit_table[i].fn) {
+            g_module_exit_table[i].fn();
+        }
+    }
+}
+
+#else
+
+/* Linux: linker script section-based automatic discovery */
+
 __attribute__((used, section(".embedi_init")))
 static const module_init_entry_t _empty_init = { NULL, NULL };
 
@@ -56,3 +104,5 @@ void module_exit_all(void) {
         }
     }
 }
+
+#endif /* WINDOWS_BUILD */
