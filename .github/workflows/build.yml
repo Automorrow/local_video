@@ -53,6 +53,7 @@ jobs:
           mingw-w64-x86_64-make
           mingw-w64-x86_64-sqlite3
           mingw-w64-x86_64-pkg-config
+          mingw-w64-x86_64-ntldd
     
     - name: Build with MSYS2
       shell: msys2 {0}
@@ -67,8 +68,10 @@ jobs:
       run: |
         mkdir -p dist
         cp build/bin/local_video.exe dist/
-        cp /mingw64/bin/libsqlite3-0.dll dist/
         cp -r web dist/
+        # Copy all required DLLs (MinGW runtime + sqlite3)
+        ntldd -R build/bin/local_video.exe | grep "mingw64" | grep -v "not found" | \
+          awk '{print $3}' | sed 's/\\/\//g' | while read dll; do cp "$dll" dist/; done
         echo "@echo off" > dist/start.bat
         echo "local_video.exe --port 8080 --video-dir ./videos" >> dist/start.bat
     
