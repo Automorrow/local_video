@@ -3,7 +3,6 @@
 #include "../../include/platform.h"
 #include "../../shared/log/log.h"
 #include <errno.h>
-#include <fcntl.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -50,8 +49,7 @@ lv_error_t http_server_send_file_response(int client_fd,
                                           int64_t range_end,
                                           int enable_range)
 {
-    int fd;
-    struct stat st;
+    FILE *fp;
     int64_t file_size;
     int64_t actual_start;
     int64_t actual_end;
@@ -63,12 +61,8 @@ lv_error_t http_server_send_file_response(int client_fd,
         return LV_ERROR_INVALID_ARG;
     }
 
-    if (lstat(file_path, &st) == 0 && S_ISLNK(st.st_mode)) {
-        return http_response_send_error(client_fd, 403, "Symlinks not allowed");
-    }
-
-    fd = open(file_path, O_RDONLY);
-    if (fd < 0) {
+    fp = fopen(file_path, "rb");
+    if (!fp) {
         log_error("Failed to open file '%s': errno=%d", file_path, errno);
         if (errno == ENOENT) {
             return http_response_send_error(client_fd, 404, "File not found");
@@ -76,16 +70,17 @@ lv_error_t http_server_send_file_response(int client_fd,
         return http_response_send_error(client_fd, 500, "Server error");
     }
 
-    log_info("Serving file '%s' (fd=%d)", file_path, fd);
-
-    if (fstat(fd, &st) < 0) {
-        log_error("Failed to fstat file '%s': errno=%d", file_path, errno);
-        close(fd);
+    /* Get file size */
+    if (fseek(fp, 0, SEEK_END) != 0) {
+        log_error("Failed to seek file '%s': errno=%d", file_path, errno);
+        fclose(fp);
         return http_response_send_error(client_fd, 500, "Server error");
     }
+    file_size = (int64_t)ftell(fp);
+    fseek(fp, 0, SEEK_SET);
 
-    file_size = (int64_t)st.st_size;
-    log_info("File size: %ld bytes", (long)file_size);
+    log_info("Serving file '%s' (size=%ld bytes)", file_path, (long)file_size);
+
     actual_start = 0;
     actual_end = file_size > 0 ? file_size - 1 : 0;
 
@@ -102,78 +97,75 @@ lv_error_t http_server_send_file_response(int client_fd,
         header_len = snprintf(header, sizeof(header),
                               "HTTP/1.1 206 Partial Content\r\n"
                               "Content-Type: %s\r\n"
-                              "Content-Length: %ld\r\n"
-                              "Content-Range: bytes %ld-%ld/%ld\r\n"
+                              "Content-Length: %lld\r\n"
+                              "Content-Range: bytes %lld-%lld/%lld\r\n"
                               "Connection: close\r\n"
                               "Accept-Ranges: bytes\r\n"
                               "\r\n",
                               http_server_get_mime_type(file_path),
-                              (long)content_length,
-                              (long)actual_start,
-                              (long)actual_end,
-                              (long)file_size);
+                              (long long)content_length,
+                              (long long)actual_start,
+                              (long long)actual_end,
+                              (long long)file_size);
         if (header_len < 0 || (size_t)header_len >= sizeof(header)) {
-            close(fd);
+            fclose(fp);
             return LV_ERROR_IO;
         }
 
         if (write_all(client_fd, header, (size_t)header_len) != LV_OK) {
-            close(fd);
+            fclose(fp);
             return LV_ERROR_IO;
         }
 
-        if (lseek(fd, actual_start, SEEK_SET) < 0) {
-            close(fd);
-            return LV_ERROR_IO;
-        }
+        fseek(fp, actual_start, SEEK_SET);
 
         while (content_length > 0) {
             size_t to_read = content_length > (int64_t)sizeof(buffer) ?
                              sizeof(buffer) : (size_t)content_length;
-            ssize_t bytes_read = read(fd, buffer, to_read);
-            if (bytes_read <= 0) {
+            size_t bytes_read = fread(buffer, 1, to_read, fp);
+            if (bytes_read == 0) {
                 break;
             }
-            if (write_all(client_fd, buffer, (size_t)bytes_read) != LV_OK) {
-                close(fd);
+            if (write_all(client_fd, buffer, bytes_read) != LV_OK) {
+                fclose(fp);
                 return LV_ERROR_IO;
             }
-            content_length -= bytes_read;
+            content_length -= (int64_t)bytes_read;
         }
     } else {
         header_len = snprintf(header, sizeof(header),
                               "HTTP/1.1 200 OK\r\n"
                               "Content-Type: %s\r\n"
-                              "Content-Length: %ld\r\n"
+                              "Content-Length: %lld\r\n"
                               "Connection: close\r\n"
                               "%s"
                               "\r\n",
                               http_server_get_mime_type(file_path),
-                              (long)file_size,
+                              (long long)file_size,
                               enable_range ? "Accept-Ranges: bytes\r\n" : "");
         if (header_len < 0 || (size_t)header_len >= sizeof(header)) {
-            close(fd);
+            fclose(fp);
             return LV_ERROR_IO;
         }
 
         if (write_all(client_fd, header, (size_t)header_len) != LV_OK) {
-            close(fd);
+            fclose(fp);
             return LV_ERROR_IO;
         }
 
         while (1) {
-            ssize_t bytes_read = read(fd, buffer, sizeof(buffer));
-            if (bytes_read <= 0) {
+            size_t bytes_read = fread(buffer, 1, sizeof(buffer), fp);
+            if (bytes_read == 0) {
                 break;
             }
-            if (write_all(client_fd, buffer, (size_t)bytes_read) != LV_OK) {
-                close(fd);
+            if (write_all(client_fd, buffer, bytes_read) != LV_OK) {
+                fclose(fp);
                 return LV_ERROR_IO;
             }
         }
     }
 
-    close(fd);
+    fclose(fp);
     return LV_OK;
 }
 
