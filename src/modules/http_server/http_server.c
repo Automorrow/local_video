@@ -34,7 +34,7 @@ static void *connection_handler(void *arg)
 
     if (err != LV_OK) {
         http_response_send_error(client_fd, 400, "Bad request");
-        close(client_fd);
+        sock_close(client_fd);
         return NULL;
     }
 
@@ -44,14 +44,14 @@ static void *connection_handler(void *arg)
     if (strncmp(req.path, "/api/", 5) == 0) {
         if (strcmp(req.method, "GET") != 0 && strcmp(req.method, "POST") != 0 && strcmp(req.method, "DELETE") != 0) {
             http_response_send_error(client_fd, 405, "Method not allowed");
-            close(client_fd);
+            sock_close(client_fd);
             return NULL;
         }
     } else {
         /* For static files and video streaming, only allow GET */
         if (strcmp(req.method, "GET") != 0) {
             http_response_send_error(client_fd, 405, "Method not allowed");
-            close(client_fd);
+            sock_close(client_fd);
             return NULL;
         }
     }
@@ -90,7 +90,7 @@ static void *connection_handler(void *arg)
         if (err != LV_OK) http_response_send_error(client_fd, 500, "Static file error");
     }
 
-    close(client_fd);
+    sock_close(client_fd);
     return NULL;
 }
 
@@ -121,14 +121,14 @@ static void *server_loop(void *arg)
 
     if (bind(server_socket, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
         log_error("Failed to bind to port %d: %s", server_port, strerror(errno));
-        close(server_socket);
+        sock_close(server_socket);
         server_socket = -1;
         return NULL;
     }
 
     if (listen(server_socket, 64) < 0) {
         log_error("Failed to listen on port %d: %s", server_port, strerror(errno));
-        close(server_socket);
+        sock_close(server_socket);
         server_socket = -1;
         return NULL;
     }
@@ -154,7 +154,7 @@ static void *server_loop(void *arg)
         int *client_fd_ptr = malloc(sizeof(int));
         if (!client_fd_ptr) {
             log_error("Failed to allocate memory for client fd");
-            close(client_fd);
+            sock_close(client_fd);
             continue;
         }
         *client_fd_ptr = client_fd;
@@ -163,7 +163,7 @@ static void *server_loop(void *arg)
         if (pthread_create(&thread, NULL, connection_handler, client_fd_ptr) != 0) {
             log_error("Failed to create thread: %s", strerror(errno));
             free(client_fd_ptr);
-            close(client_fd);
+            sock_close(client_fd);
             continue;
         }
 
@@ -222,7 +222,7 @@ lv_error_t http_server_stop(void)
     pthread_join(server_thread, NULL);
 
     if (server_socket >= 0) {
-        close(server_socket);
+        sock_close(server_socket);
         server_socket = -1;
     }
 

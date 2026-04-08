@@ -11,7 +11,7 @@
     #include <sys/stat.h>
     
     /* Windows compatibility macros */
-    #define close(fd) _close(fd)
+    #define close _close
     #define lseek _lseek
     #define open _open
     #define strcasecmp _stricmp
@@ -24,11 +24,16 @@
      * while send/recv only work with sockets (Winsock).
      * We define net_read/net_write for socket I/O, and keep read/write
      * mapped to _read/_write for file I/O.
+     *
+     * IMPORTANT: Use closesocket() for sockets, _close() for file fds.
+     * We cannot macro close() because it would apply to both.
+     * Use sock_close() for sockets instead.
      */
     #define read _read
     #define write _write
     #define net_read(fd, buf, len) recv((fd), (buf), (len), 0)
     #define net_write(fd, buf, len) send((fd), (buf), (len), 0)
+    #define sock_close(fd) closesocket(fd)
     
     /* Windows socket compatibility */
     #define SHUT_RDWR SD_BOTH
@@ -77,6 +82,7 @@
     /* On POSIX, read/write work for both sockets and files */
     #define net_read(fd, buf, len) read((fd), (buf), (len))
     #define net_write(fd, buf, len) write((fd), (buf), (len))
+    #define sock_close(fd) close(fd)
 #endif
 
 /* Platform initialization */
