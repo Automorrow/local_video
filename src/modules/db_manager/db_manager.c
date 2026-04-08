@@ -95,6 +95,11 @@ static void db_manager_init_internal(void) {
 
     g_initialized = 1;
     db_manager_init("./local_video.db");
+
+    /* Log database video count for diagnostics */
+    int64_t count = 0;
+    db_manager_video_count(&count);
+    log_info("Database initialized with %ld videos", (long)count);
 }
 
 MODULE_INIT(db_manager_init_internal, "db_manager");
