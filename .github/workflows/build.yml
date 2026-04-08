@@ -86,7 +86,74 @@ jobs:
         echo "## ⚖️ 法律免责声明" > dist/免责声明.txt
         echo "" >> dist/免责声明.txt
         echo "本项目仅供教育和合法用途。用户须自行承担遵守相关法律法规的责任。作者不对任何滥用或非法使用行为承担责任。" >> dist/免责声明.txt
-    
+
+    - name: Smoke test
+      shell: msys2 {0}
+      run: |
+        cd dist
+        # Start server in background
+        ./local_video.exe --port 18080 &
+        SERVER_PID=$!
+        
+        # Wait for server to start
+        for i in $(seq 1 10); do
+          if curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:18080/ 2>/dev/null | grep -q "200"; then
+            echo "Server is ready"
+            break
+          fi
+          sleep 1
+        done
+        
+        # Test 1: Homepage returns 200 with HTML
+        HTTP_CODE=$(curl -s -o /tmp/smoke_body.html -w "%{http_code}" http://127.0.0.1:18080/)
+        echo "Homepage HTTP code: $HTTP_CODE"
+        if [ "$HTTP_CODE" != "200" ]; then
+          echo "FAIL: Homepage returned $HTTP_CODE"
+          kill $SERVER_PID 2>/dev/null
+          exit 1
+        fi
+        if ! grep -q "LocalVideoServer" /tmp/smoke_body.html; then
+          echo "FAIL: Homepage does not contain expected content"
+          cat /tmp/smoke_body.html
+          kill $SERVER_PID 2>/dev/null
+          exit 1
+        fi
+        echo "PASS: Homepage OK"
+        
+        # Test 2: API returns valid JSON
+        HTTP_CODE=$(curl -s -o /tmp/smoke_api.json -w "%{http_code}" http://127.0.0.1:18080/api/videos)
+        echo "API HTTP code: $HTTP_CODE"
+        if [ "$HTTP_CODE" != "200" ]; then
+          echo "FAIL: API returned $HTTP_CODE"
+          kill $SERVER_PID 2>/dev/null
+          exit 1
+        fi
+        echo "PASS: API OK"
+        
+        # Test 3: CSS is served
+        HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:18080/css/style.css)
+        echo "CSS HTTP code: $HTTP_CODE"
+        if [ "$HTTP_CODE" != "200" ]; then
+          echo "FAIL: CSS returned $HTTP_CODE"
+          kill $SERVER_PID 2>/dev/null
+          exit 1
+        fi
+        echo "PASS: CSS OK"
+        
+        # Test 4: JS is served
+        HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:18080/js/app.js)
+        echo "JS HTTP code: $HTTP_CODE"
+        if [ "$HTTP_CODE" != "200" ]; then
+          echo "FAIL: JS returned $HTTP_CODE"
+          kill $SERVER_PID 2>/dev/null
+          exit 1
+        fi
+        echo "PASS: JS OK"
+        
+        echo "All smoke tests passed!"
+        kill $SERVER_PID 2>/dev/null
+        wait $SERVER_PID 2>/dev/null
+
     - name: Upload Windows binary
       uses: actions/upload-artifact@v4
       with:
