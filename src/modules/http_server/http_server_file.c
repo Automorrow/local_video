@@ -32,7 +32,7 @@ static lv_error_t write_all(int fd, const char *buffer, size_t len)
     size_t written_total = 0;
 
     while (written_total < len) {
-        ssize_t written = write(fd, buffer + written_total, len - written_total);
+        ssize_t written = net_write(fd, buffer + written_total, len - written_total);
         if (written < 0) {
             return LV_ERROR_IO;
         }

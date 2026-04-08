@@ -11,12 +11,12 @@ static int read_line(int fd, char *buffer, size_t max_len)
     char c;
 
     while (pos < max_len - 1) {
-        ssize_t n = read(fd, &c, 1);
+        ssize_t n = net_read(fd, &c, 1);
         if (n <= 0) {
             return -1;
         }
         if (c == '\r') {
-            n = read(fd, &c, 1);
+            n = net_read(fd, &c, 1);
             if (n > 0 && c == '\n') {
                 buffer[pos] = '\0';
                 return 0;

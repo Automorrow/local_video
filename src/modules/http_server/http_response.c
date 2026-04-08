@@ -52,13 +52,13 @@ lv_error_t http_response_send(int client_fd, const HttpResponse *resp, const cha
         return LV_ERROR_IO;
     }
 
-    ssize_t written = write(client_fd, header, (size_t)header_len);
+    ssize_t written = net_write(client_fd, header, (size_t)header_len);
     if (written != header_len) {
         return LV_ERROR_IO;
     }
 
     if (body && body_len > 0) {
-        written = write(client_fd, body, body_len);
+        written = net_write(client_fd, body, body_len);
         if (written != (ssize_t)body_len) {
             return LV_ERROR_IO;
         }

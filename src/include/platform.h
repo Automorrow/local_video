@@ -20,13 +20,15 @@
     #define usleep(x) Sleep((x) / 1000)
     
     /*
-     * IMPORTANT: Do NOT define read/write as _read/_write.
-     * _read/_write only work with file descriptors (MSVCRT),
-     * NOT with sockets. Use recv/send instead, which work
-     * for both sockets and file descriptors in MinGW.
+     * On Windows, _read/_write only work with file descriptors (MSVCRT),
+     * while send/recv only work with sockets (Winsock).
+     * We define net_read/net_write for socket I/O, and keep read/write
+     * mapped to _read/_write for file I/O.
      */
-    #define read(fd, buf, len) recv((fd), (buf), (len), 0)
-    #define write(fd, buf, len) send((fd), (buf), (len), 0)
+    #define read _read
+    #define write _write
+    #define net_read(fd, buf, len) recv((fd), (buf), (len), 0)
+    #define net_write(fd, buf, len) send((fd), (buf), (len), 0)
     
     /* Windows socket compatibility */
     #define SHUT_RDWR SD_BOTH
@@ -71,6 +73,10 @@
     #include <strings.h>
     #include <signal.h>
     #include <pthread.h>
+    
+    /* On POSIX, read/write work for both sockets and files */
+    #define net_read(fd, buf, len) read((fd), (buf), (len))
+    #define net_write(fd, buf, len) write((fd), (buf), (len))
 #endif
 
 /* Platform initialization */

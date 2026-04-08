@@ -87,8 +87,8 @@ lv_error_t api_send_json_response(int client_fd, const char *json, int status_co
                           resp.reason,
                           (long)strlen(json));
 
-    w1 = write(client_fd, header, (size_t)header_len);
-    w2 = write(client_fd, json, strlen(json));
+    w1 = net_write(client_fd, header, (size_t)header_len);
+    w2 = net_write(client_fd, json, strlen(json));
     (void)w1;
     (void)w2;
 
