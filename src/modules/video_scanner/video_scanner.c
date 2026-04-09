@@ -6,6 +6,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include <sys/stat.h>
+
 #ifndef _WIN32
 /* Linux-only global state (inotify/epoll) */
 volatile int watcher_running = 0;
@@ -119,11 +121,20 @@ lv_error_t video_scanner_rescan(void)
 static void video_scanner_init(void)
 {
     log_info("[模块] Video scanner 初始化");
+
+    /* Ensure scan directory exists */
+    const char *scan_dir = config_get()->scan_directory;
+#ifdef _WIN32
+    CreateDirectoryA(scan_dir, NULL);
+#else
+    mkdir(scan_dir, 0755);
+#endif
+
     int64_t video_count = 0;
     db_manager_video_count(&video_count);
     if (video_count == 0) {
-        log_info("[扫描] 数据库为空，开始初始扫描: %s", config_get()->scan_directory);
-        video_scanner_scan(config_get()->scan_directory);
+        log_info("[扫描] 数据库为空，开始初始扫描: %s", scan_dir);
+        video_scanner_scan(scan_dir);
     }
 }
 

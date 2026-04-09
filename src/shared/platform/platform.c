@@ -5,15 +5,17 @@
 
 int platform_init(void)
 {
+    /* Set console to UTF-8 for proper Chinese output */
+    SetConsoleOutputCP(CP_UTF8);
+    SetConsoleCP(CP_UTF8);
+
     WSADATA wsaData;
     int result = WSAStartup(MAKEWORD(2, 2), &wsaData);
     if (result != 0) {
         log_error("WSAStartup failed: %d", result);
         return -1;
     }
-    
-    /* Ignore SIGPIPE equivalent on Windows - not needed */
-    
+
     return 0;
 }
 
