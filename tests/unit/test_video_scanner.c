@@ -2,12 +2,16 @@
 #include "../../src/modules/video_scanner/video_scanner_internal.h"
 #include "../../src/modules/config/config.h"
 #include "../../src/modules/db_manager/db_manager.h"
+#include "../../src/include/platform.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <pthread.h>
 #include <sys/stat.h>
+
+#ifndef _WIN32
 #include <unistd.h>
+#endif
 
 static int test_results = 0;
 static int test_count = 0;
@@ -41,15 +45,80 @@ static void test_helper_functions(void)
     TEST_ASSERT(strcmp(title, "test_video") == 0,
                 "Extracts title without extension");
 
+    /* Test backslash path (Windows) */
+    video_scanner_extract_title("C:\\Users\\test\\video.mp4", title, sizeof(title));
+    TEST_ASSERT(strcmp(title, "video") == 0,
+                "Extracts title from backslash path");
+
     char dir[256];
     video_scanner_extract_directory("/tmp/example/test_video.mp4", dir, sizeof(dir));
     TEST_ASSERT(strcmp(dir, "/tmp/example") == 0,
                 "Extracts parent directory");
 
+    /* Test backslash path (Windows) */
+    video_scanner_extract_directory("C:\\Users\\test\\video.mp4", dir, sizeof(dir));
+    TEST_ASSERT(strcmp(dir, "C:\\Users\\test") == 0,
+                "Extracts parent directory from backslash path");
+
     video_scanner_extract_directory("filename_only.mp4", dir, sizeof(dir));
     TEST_ASSERT(strcmp(dir, "/") == 0,
                 "Falls back to root for slashless path");
 }
+
+#ifdef _WIN32
+/* ====== Windows-specific tests ====== */
+
+static void test_watcher_lifecycle(void)
+{
+    printf("\n--- Test: Watcher lifecycle (Windows) ---\n");
+
+    char temp_dir[MAX_PATH];
+    GetTempPathA(MAX_PATH, temp_dir);
+    strcat(temp_dir, "lv_scanner_test_XXXXXX");
+
+    /* Create unique temp dir */
+    for (int i = 0; i < 99999; i++) {
+        char candidate[MAX_PATH];
+        snprintf(candidate, sizeof(candidate),
+                 "%s\\lv_scanner_test_%05d", temp_dir, i);
+        if (CreateDirectoryA(candidate, NULL)) {
+            strcpy(temp_dir, candidate);
+            break;
+        }
+    }
+
+    char *argv[] = { "test_video_scanner", "--video-dir", temp_dir, "--db-path",
+                     ":memory:" };
+    config_parse_args(5, argv);
+
+    lv_error_t err = db_manager_init(":memory:");
+    TEST_ASSERT(err == LV_OK, "Initializes DB for watcher lifecycle test");
+    if (err != LV_OK) {
+        RemoveDirectoryA(temp_dir);
+        return;
+    }
+
+    err = video_scanner_stop_watcher();
+    TEST_ASSERT(err == LV_OK, "Stop watcher is idempotent before start");
+
+    err = video_scanner_start_watcher();
+    TEST_ASSERT(err == LV_OK, "Start watcher on temporary directory");
+
+    err = video_scanner_start_watcher();
+    TEST_ASSERT(err == LV_OK, "Second start is tolerated");
+
+    err = video_scanner_stop_watcher();
+    TEST_ASSERT(err == LV_OK, "Stop watcher after start");
+
+    err = video_scanner_stop_watcher();
+    TEST_ASSERT(err == LV_OK, "Second stop remains safe");
+
+    db_manager_close();
+    RemoveDirectoryA(temp_dir);
+}
+
+#else
+/* ====== Linux-specific tests ====== */
 
 static void test_watch_path_lookup(void)
 {
@@ -205,14 +274,22 @@ static void test_stop_during_start(void)
     rmdir(temp_dir);
 }
 
+#endif /* _WIN32 */
+
 int main(void)
 {
     printf("=== Video Scanner Module Unit Tests ===\n\n");
 
     test_helper_functions();
+
+#ifndef _WIN32
     test_watch_path_lookup();
+#endif
     test_watcher_lifecycle();
+
+#ifndef _WIN32
     test_stop_during_start();
+#endif
 
     printf("\n=== Test Summary ===\n");
     printf("Total tests: %d\n", test_count);

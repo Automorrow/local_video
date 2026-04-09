@@ -247,5 +247,20 @@ else()
     target_include_directories(test_db PRIVATE ${CMAKE_SOURCE_DIR}/third_party/sqlite3)
     target_link_libraries(test_db ${PLATFORM_LIBS} sqlite3)
 
-    # test_video_scanner requires Linux-specific inotify/epoll, skip on Windows
+    add_lv_test(test_video_scanner tests/unit/test_video_scanner.c
+        src/modules/video_scanner/video_scanner.c
+        src/modules/video_scanner/video_scanner_watcher.c
+        src/modules/video_scanner/video_scanner_scan.c
+        src/modules/db_manager/db_manager.c
+        src/modules/db_manager/db_manager_video.c
+        src/modules/db_manager/db_manager_user.c
+        src/modules/db_manager/db_manager_blacklist.c
+        src/modules/config/config.c
+        src/shared/module/module.c
+        src/shared/thread/thread.c
+        src/shared/log/log.c
+    )
+    target_compile_definitions(test_video_scanner PRIVATE WINDOWS_BUILD)
+    target_include_directories(test_video_scanner PRIVATE ${CMAKE_SOURCE_DIR}/third_party/sqlite3)
+    target_link_libraries(test_video_scanner ${PLATFORM_LIBS} sqlite3)
 endif()
