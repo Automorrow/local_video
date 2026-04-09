@@ -74,13 +74,12 @@ static void test_watcher_lifecycle(void)
 
     char temp_dir[MAX_PATH];
     GetTempPathA(MAX_PATH, temp_dir);
-    strcat(temp_dir, "lv_scanner_test_XXXXXX");
 
     /* Create unique temp dir */
     for (int i = 0; i < 99999; i++) {
         char candidate[MAX_PATH];
         snprintf(candidate, sizeof(candidate),
-                 "%s\\lv_scanner_test_%05d", temp_dir, i);
+                 "%slv_scanner_test_%05d", temp_dir, i);
         if (CreateDirectoryA(candidate, NULL)) {
             strcpy(temp_dir, candidate);
             break;

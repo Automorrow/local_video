@@ -5,6 +5,7 @@
 #include <string.h>
 #ifdef _WIN32
 #include "../../src/include/platform.h"
+#include <io.h>
 #else
 #include <unistd.h>
 #endif
@@ -37,8 +38,17 @@ int main(void)
 {
     printf("=== Phase 1.7: 共享基础设施 - JSON 库 单元测试 ===\n\n");
 
-    char temp_filename[] = "/tmp/test_json_XXXXXX";
-    int fd = mkstemp(temp_filename);
+    char temp_filename[260];
+    int fd;
+#ifdef _WIN32
+    char temp_path[MAX_PATH];
+    GetTempPathA(MAX_PATH, temp_path);
+    GetTempFileNameA(temp_path, "tjs", 0, temp_filename);
+    fd = _open(temp_filename, _O_RDWR | _O_CREAT | _O_TRUNC, _S_IREAD | _S_IWRITE);
+#else
+    strcpy(temp_filename, "/tmp/test_json_XXXXXX");
+    fd = mkstemp(temp_filename);
+#endif
     FILE *test_file = fdopen(fd, "w+");
 
     /* Test 1: JSON writer init */
