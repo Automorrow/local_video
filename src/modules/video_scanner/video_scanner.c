@@ -6,6 +6,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+#ifndef _WIN32
+/* Linux-only global state (inotify/epoll) */
 volatile int watcher_running = 0;
 int watcher_thread_started = 0;
 int inotify_fd = -1;
@@ -16,6 +18,8 @@ int watch_dir_count = 0;
 pending_event_t event_queue[BATCH_SIZE];
 int event_count = 0;
 pthread_mutex_t event_mutex = PTHREAD_MUTEX_INITIALIZER;
+#endif
+
 volatile int scan_in_progress = 0;
 
 static const char *video_extensions[] = {
@@ -39,6 +43,10 @@ int video_scanner_is_video_file(const char *filename)
 void video_scanner_extract_title(const char *path, char *title, size_t title_size)
 {
     const char *filename = strrchr(path, '/');
+    if (!filename) {
+        /* Also try backslash for Windows paths */
+        filename = strrchr(path, '\\');
+    }
     if (!filename) filename = path;
     else filename++;
 
@@ -60,6 +68,9 @@ void video_scanner_extract_directory(const char *full_path, char *dir,
 {
     const char *last_slash = strrchr(full_path, '/');
     if (!last_slash) {
+        last_slash = strrchr(full_path, '\\');
+    }
+    if (!last_slash) {
         dir[0] = '/';
         dir[1] = '\0';
         return;
@@ -71,6 +82,7 @@ void video_scanner_extract_directory(const char *full_path, char *dir,
     dir[len] = '\0';
 }
 
+#ifndef _WIN32
 const char *video_scanner_find_watch_path(int wd)
 {
     for (int i = 0; i < watch_dir_count; i++) {
@@ -80,6 +92,7 @@ const char *video_scanner_find_watch_path(int wd)
     }
     return "unknown";
 }
+#endif
 
 lv_error_t video_scanner_start_watcher(void)
 {

@@ -2,12 +2,100 @@
 #include "../config/config.h"
 #include "../db_manager/db_manager.h"
 #include "../../shared/log/log.h"
-#include <dirent.h>
-#include <limits.h>
-#include <pthread.h>
+#include "../../include/platform.h"
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+
+#ifdef _WIN32
+/* ====== Windows Implementation (FindFirstFileW/FindNextFileW) ====== */
+#include <windows.h>
+#include <io.h>
+
+static lv_error_t scan_single_file(const char *full_path)
+{
+    struct _stat64 st;
+    if (_stat64(full_path, &st) < 0) return LV_ERROR_IO;
+    if (!S_ISREG(st.st_mode)) return LV_OK;
+    if (!video_scanner_is_video_file(full_path)) return LV_OK;
+    if (st.st_size < 1024 * 1024) return LV_OK;
+
+    char real_path[4096];
+    if (_fullpath(real_path, full_path, sizeof(real_path)) == NULL) return LV_ERROR_IO;
+
+    /* Normalize path separators to forward slash for consistency */
+    for (char *p = real_path; *p; p++) {
+        if (*p == '\\') *p = '/';
+    }
+
+    bool in_blacklist = false;
+    if (db_manager_blacklist_check(real_path, &in_blacklist) == LV_OK && in_blacklist) {
+        return LV_OK;
+    }
+
+    char title[256];
+    char category[512];
+    video_scanner_extract_title(real_path, title, sizeof(title));
+    video_scanner_extract_directory(real_path, category, sizeof(category));
+
+    return db_manager_video_insert(real_path, title, category, st.st_size);
+}
+
+static lv_error_t scan_directory_incremental(const char *dir_path, int *file_count)
+{
+    bool in_blacklist = false;
+    if (db_manager_blacklist_check(dir_path, &in_blacklist) == LV_OK && in_blacklist) {
+        return LV_OK;
+    }
+
+    char search_path[4096];
+    snprintf(search_path, sizeof(search_path), "%s\\*", dir_path);
+
+    WIN32_FIND_DATAW find_data;
+    HANDLE hFind = FindFirstFileW(L"." , &find_data); /* test access */
+
+    /* Use wide-char for proper Unicode support */
+    WCHAR wsearch_path[4096];
+    MultiByteToWideChar(CP_UTF8, 0, search_path, -1, wsearch_path, 4096);
+
+    hFind = FindFirstFileW(wsearch_path, &find_data);
+    if (hFind == INVALID_HANDLE_VALUE) return LV_ERROR_IO;
+
+    do {
+        /* Skip . and .. */
+        if (wcscmp(find_data.cFileName, L".") == 0 || wcscmp(find_data.cFileName, L"..") == 0) {
+            continue;
+        }
+
+        /* Convert wide filename to UTF-8 */
+        char utf8_name[1024];
+        WideCharToMultiByte(CP_UTF8, 0, find_data.cFileName, -1,
+                           utf8_name, sizeof(utf8_name), NULL, NULL);
+
+        char full_path[4096];
+        snprintf(full_path, sizeof(full_path), "%s/%s", dir_path, utf8_name);
+
+        if (find_data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) {
+            /* Skip hidden directories and reparse points (symlinks) */
+            if (find_data.dwFileAttributes & (FILE_ATTRIBUTE_HIDDEN | FILE_ATTRIBUTE_REPARSE_POINT)) {
+                continue;
+            }
+            scan_directory_incremental(full_path, file_count);
+        } else {
+            if (scan_single_file(full_path) == LV_OK) {
+                (*file_count)++;
+            }
+        }
+    } while (FindNextFileW(hFind, &find_data));
+
+    FindClose(hFind);
+    return LV_OK;
+}
+
+#else /* POSIX / Linux */
+/* ====== Linux Implementation (opendir/readdir) ====== */
+#include <dirent.h>
+#include <limits.h>
 #include <unistd.h>
 
 static lv_error_t scan_single_file(const char *full_path)
@@ -68,6 +156,10 @@ static lv_error_t scan_directory_incremental(const char *dir_path, int *file_cou
     closedir(dir);
     return LV_OK;
 }
+
+#endif /* _WIN32 */
+
+/* ====== Platform-independent scan thread ====== */
 
 static void *scan_thread_func(void *arg)
 {

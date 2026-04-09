@@ -378,9 +378,7 @@ lv_error_t api_remove_blacklist(int client_fd, const char *path)
             log_info("Blacklist entry removed: %s", blacklist_path);
             log_info("Unblacklisting videos...");
             db_manager_video_unblacklist_by_path_prefix(blacklist_path);
-#ifndef _WIN32
             video_scanner_scan(blacklist_path);
-#endif
         } else {
             db_manager_video_unblacklist_all();
         }

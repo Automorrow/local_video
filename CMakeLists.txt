@@ -86,6 +86,13 @@ set(LINUX_SOURCES
     src/modules/video_scanner/video_scanner_scan.c
 )
 
+# Video scanner sources (shared, with platform-specific #ifdef)
+set(SCANNER_SOURCES
+    src/modules/video_scanner/video_scanner.c
+    src/modules/video_scanner/video_scanner_watcher.c
+    src/modules/video_scanner/video_scanner_scan.c
+)
+
 # Include directories
 include_directories(
     src/include
@@ -117,8 +124,8 @@ endif()
 
 # Main executable
 if(IS_WINDOWS)
-    # Windows: core sources only (no video_scanner)
-    add_executable(local_video ${CORE_SOURCES})
+    # Windows: core sources + video scanner (with platform-specific #ifdef)
+    add_executable(local_video ${CORE_SOURCES} ${SCANNER_SOURCES})
     target_compile_definitions(local_video PRIVATE WINDOWS_BUILD)
     # Windows doesn't support linker sections the same way
     set_target_properties(local_video PROPERTIES

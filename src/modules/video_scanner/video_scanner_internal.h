@@ -11,6 +11,8 @@
 #define BATCH_SIZE 64
 #define MAX_EPOLL_EVENTS 64
 
+#ifndef _WIN32
+/* Linux-only types and globals (inotify/epoll) */
 typedef struct {
     int wd;
     char path[1024];
@@ -32,13 +34,16 @@ extern int watch_dir_count;
 extern pending_event_t event_queue[BATCH_SIZE];
 extern int event_count;
 extern pthread_mutex_t event_mutex;
+
+const char *video_scanner_find_watch_path(int wd);
+#endif
+
 extern volatile int scan_in_progress;
 
 int video_scanner_is_video_file(const char *filename);
 void video_scanner_extract_title(const char *path, char *title, size_t title_size);
 void video_scanner_extract_directory(const char *full_path, char *dir,
                                      size_t dir_size);
-const char *video_scanner_find_watch_path(int wd);
 
 lv_error_t video_scanner_start_watcher_impl(void);
 lv_error_t video_scanner_stop_watcher_impl(void);
