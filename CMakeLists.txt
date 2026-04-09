@@ -148,24 +148,42 @@ set_target_properties(local_video PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
 )
 
-# Tests (Linux only)
+# Tests
+function(add_lv_test target)
+    add_executable(${target} ${ARGN})
+    target_include_directories(${target} PRIVATE
+        ${CMAKE_SOURCE_DIR}/src/include
+        ${CMAKE_SOURCE_DIR}/src/shared/module
+        ${CMAKE_SOURCE_DIR}/src/shared/list
+        ${CMAKE_SOURCE_DIR}/src/shared/notifier
+        ${CMAKE_SOURCE_DIR}/src/shared/log
+        ${CMAKE_SOURCE_DIR}/src/shared/thread
+        ${CMAKE_SOURCE_DIR}/src/shared/json
+        ${CMAKE_SOURCE_DIR}/src/shared/platform
+        ${CMAKE_SOURCE_DIR}/src/modules/config
+        ${CMAKE_SOURCE_DIR}/src/modules/db_manager
+        ${CMAKE_SOURCE_DIR}/src/modules/video_scanner
+    )
+    set_target_properties(${target} PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+endfunction()
+
 if(NOT IS_WINDOWS)
-    function(add_lv_test target)
-        add_executable(${target} ${ARGN})
+    # Linux tests with linker script
+    function(add_lv_test_linux target)
+        add_lv_test(${target} ${ARGN})
         target_link_options(${target} PRIVATE -T ${CMAKE_SOURCE_DIR}/linker.ld)
         target_link_libraries(${target} pthread sqlite3)
-        set_target_properties(${target} PROPERTIES
-            RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
-        )
     endfunction()
 
-    add_lv_test(test_module tests/unit/test_module.c src/shared/module/module.c)
-    add_lv_test(test_list tests/unit/test_list.c)
-    add_lv_test(test_notifier tests/unit/test_notifier.c src/shared/notifier/notifier.c)
-    add_lv_test(test_log tests/unit/test_log.c src/shared/log/log.c)
-    add_lv_test(test_thread tests/unit/test_thread.c src/shared/thread/thread.c)
-    add_lv_test(test_json tests/unit/test_json.c src/shared/json/json.c)
-    add_lv_test(test_db tests/unit/test_db_manager.c 
+    add_lv_test_linux(test_module tests/unit/test_module.c src/shared/module/module.c)
+    add_lv_test_linux(test_list tests/unit/test_list.c)
+    add_lv_test_linux(test_notifier tests/unit/test_notifier.c src/shared/notifier/notifier.c)
+    add_lv_test_linux(test_log tests/unit/test_log.c src/shared/log/log.c)
+    add_lv_test_linux(test_thread tests/unit/test_thread.c src/shared/thread/thread.c)
+    add_lv_test_linux(test_json tests/unit/test_json.c src/shared/json/json.c)
+    add_lv_test_linux(test_db tests/unit/test_db_manager.c
         src/modules/db_manager/db_manager.c
         src/modules/db_manager/db_manager_video.c
         src/modules/db_manager/db_manager_user.c
@@ -174,7 +192,7 @@ if(NOT IS_WINDOWS)
         src/shared/thread/thread.c
         src/shared/log/log.c
     )
-    add_lv_test(test_video_scanner tests/unit/test_video_scanner.c
+    add_lv_test_linux(test_video_scanner tests/unit/test_video_scanner.c
         src/modules/video_scanner/video_scanner.c
         src/modules/video_scanner/video_scanner_watcher.c
         src/modules/video_scanner/video_scanner_scan.c
@@ -196,4 +214,38 @@ if(NOT IS_WINDOWS)
     add_test(NAME test_json COMMAND test_json WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
     add_test(NAME test_db COMMAND test_db WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
     add_test(NAME test_video_scanner COMMAND test_video_scanner WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+else()
+    # Windows tests
+    add_lv_test(test_module tests/unit/test_module.c src/shared/module/module.c)
+    target_compile_definitions(test_module PRIVATE WINDOWS_BUILD)
+    target_link_libraries(test_module ${PLATFORM_LIBS})
+
+    add_lv_test(test_list tests/unit/test_list.c)
+    target_link_libraries(test_list ${PLATFORM_LIBS})
+
+    add_lv_test(test_notifier tests/unit/test_notifier.c src/shared/notifier/notifier.c)
+    target_link_libraries(test_notifier ${PLATFORM_LIBS})
+
+    add_lv_test(test_log tests/unit/test_log.c src/shared/log/log.c)
+    target_link_libraries(test_log ${PLATFORM_LIBS})
+
+    add_lv_test(test_thread tests/unit/test_thread.c src/shared/thread/thread.c)
+    target_link_libraries(test_thread ${PLATFORM_LIBS})
+
+    add_lv_test(test_json tests/unit/test_json.c src/shared/json/json.c)
+    target_link_libraries(test_json ${PLATFORM_LIBS})
+
+    add_lv_test(test_db tests/unit/test_db_manager.c
+        src/modules/db_manager/db_manager.c
+        src/modules/db_manager/db_manager_video.c
+        src/modules/db_manager/db_manager_user.c
+        src/modules/db_manager/db_manager_blacklist.c
+        src/modules/config/config.c
+        src/shared/thread/thread.c
+        src/shared/log/log.c
+    )
+    target_include_directories(test_db PRIVATE ${CMAKE_SOURCE_DIR}/third_party/sqlite3)
+    target_link_libraries(test_db ${PLATFORM_LIBS} sqlite3)
+
+    # test_video_scanner requires Linux-specific inotify/epoll, skip on Windows
 endif()

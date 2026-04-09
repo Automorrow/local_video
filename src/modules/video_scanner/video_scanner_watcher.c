@@ -14,6 +14,13 @@
 
 #define MAX_WATCH_DIRS_WIN 2048
 #define WATCH_BUFFER_SIZE (64 * 1024)
+#define WIN_DEBOUNCE_MS 500
+#define WIN_BATCH_SIZE 64
+
+typedef struct {
+    int action;  /* FILE_ACTION_* */
+    char path[4096];
+} win_pending_event_t;
 
 typedef struct {
     HANDLE dir_handle;
@@ -25,15 +32,105 @@ typedef struct {
 
 static win_watch_entry_t *win_watches[MAX_WATCH_DIRS_WIN];
 static int win_watch_count = 0;
-static HANDLE watcher_thread_handle = NULL;
 static volatile int win_watcher_running = 0;
+
+/* Debounce / batch processing */
+static win_pending_event_t win_event_queue[WIN_BATCH_SIZE];
+static volatile int win_event_count = 0;
+static CRITICAL_SECTION win_event_cs;
+static HANDLE win_flush_event = NULL;
+static HANDLE win_flush_thread = NULL;
+static volatile int win_flush_running = 0;
 
 /* Forward declarations */
 static void win_process_video_create(const char *real_path);
 static void win_process_video_delete(const char *real_path);
 static void win_process_video_modify(const char *real_path);
+static void win_enqueue_event(const char *path, int action);
+static void win_flush_events(void);
+static DWORD WINAPI win_flush_thread_func(LPVOID arg);
 static void win_handle_notification(win_watch_entry_t *watch,
                                     FILE_NOTIFY_INFORMATION *info);
+static void win_enqueue_event(const char *path, int action)
+{
+    EnterCriticalSection(&win_event_cs);
+
+    if (win_event_count < WIN_BATCH_SIZE) {
+        strncpy(win_event_queue[win_event_count].path, path,
+                sizeof(win_event_queue[0].path) - 1);
+        win_event_queue[win_event_count].path[sizeof(win_event_queue[0].path) - 1] = '\0';
+        win_event_queue[win_event_count].action = action;
+        win_event_count++;
+    } else {
+        log_warning("[增量] 事件队列已满，立即刷新");
+        LeaveCriticalSection(&win_event_cs);
+        win_flush_events();
+        EnterCriticalSection(&win_event_cs);
+        if (win_event_count < WIN_BATCH_SIZE) {
+            strncpy(win_event_queue[win_event_count].path, path,
+                    sizeof(win_event_queue[0].path) - 1);
+            win_event_queue[win_event_count].path[sizeof(win_event_queue[0].path) - 1] = '\0';
+            win_event_queue[win_event_count].action = action;
+            win_event_count++;
+        }
+    }
+
+    LeaveCriticalSection(&win_event_cs);
+}
+
+static void win_flush_events(void)
+{
+    EnterCriticalSection(&win_event_cs);
+
+    for (int i = 0; i < win_event_count; i++) {
+        const char *path = win_event_queue[i].path;
+        int action = win_event_queue[i].action;
+
+        /* Deduplicate: if same path appears multiple times, only process last action */
+        int is_duplicate = 0;
+        for (int j = i + 1; j < win_event_count; j++) {
+            if (strcmp(win_event_queue[j].path, path) == 0) {
+                is_duplicate = 1;
+                break;
+            }
+        }
+        if (is_duplicate) continue;
+
+        switch (action) {
+        case FILE_ACTION_ADDED:
+        case FILE_ACTION_RENAMED_NEW_NAME:
+            win_process_video_create(path);
+            break;
+        case FILE_ACTION_REMOVED:
+        case FILE_ACTION_RENAMED_OLD_NAME:
+            win_process_video_delete(path);
+            break;
+        case FILE_ACTION_MODIFIED:
+            win_process_video_modify(path);
+            break;
+        }
+    }
+    win_event_count = 0;
+
+    LeaveCriticalSection(&win_event_cs);
+}
+
+static DWORD WINAPI win_flush_thread_func(LPVOID arg)
+{
+    (void)arg;
+    log_info("[增量监控] 去抖刷新线程启动 (debounce=%dms)", WIN_DEBOUNCE_MS);
+
+    while (win_flush_running) {
+        WaitForSingleObject(win_flush_event, WIN_DEBOUNCE_MS);
+        win_flush_events();
+    }
+
+    /* Final flush on shutdown */
+    win_flush_events();
+    log_info("[增量监控] 去抖刷新线程停止");
+    return 0;
+}
+
 static DWORD WINAPI win_watch_directory_thread(LPVOID arg);
 static int win_watch_directory_recursive(const char *path);
 
@@ -111,27 +208,18 @@ static void win_handle_notification(win_watch_entry_t *watch,
 
     if (!video_scanner_is_video_file(real_path)) return;
 
-    switch (info->Action) {
-    case FILE_ACTION_ADDED:
-    case FILE_ACTION_RENAMED_NEW_NAME:
-        win_process_video_create(real_path);
-        /* If it's a new directory, watch it recursively */
-        {
-            struct _stat64 st;
-            if (_stat64(real_path, &st) == 0 && S_ISDIR(st.st_mode)) {
-                log_info("[增量] 新子目录: %s", real_path);
-                win_watch_directory_recursive(real_path);
-            }
+    /* For new directories, watch immediately (not debounced) */
+    if (info->Action == FILE_ACTION_ADDED || info->Action == FILE_ACTION_RENAMED_NEW_NAME) {
+        struct _stat64 st;
+        if (_stat64(real_path, &st) == 0 && S_ISDIR(st.st_mode)) {
+            log_info("[增量] 新子目录: %s", real_path);
+            win_watch_directory_recursive(real_path);
+            return;
         }
-        break;
-    case FILE_ACTION_REMOVED:
-    case FILE_ACTION_RENAMED_OLD_NAME:
-        win_process_video_delete(real_path);
-        break;
-    case FILE_ACTION_MODIFIED:
-        win_process_video_modify(real_path);
-        break;
     }
+
+    /* Enqueue file events for debounced processing */
+    win_enqueue_event(real_path, info->Action);
 }
 
 static DWORD WINAPI win_watch_directory_thread(LPVOID arg)
@@ -305,6 +393,28 @@ lv_error_t video_scanner_start_watcher_impl(void)
 
     win_watcher_running = 1;
     win_watch_count = 0;
+    win_event_count = 0;
+    InitializeCriticalSection(&win_event_cs);
+
+    /* Start debounce flush thread */
+    win_flush_event = CreateEventW(NULL, FALSE, FALSE, NULL);
+    if (!win_flush_event) {
+        log_error("[增量监控] 创建刷新事件失败");
+        win_watcher_running = 0;
+        DeleteCriticalSection(&win_event_cs);
+        return LV_ERROR_UNKNOWN;
+    }
+
+    win_flush_running = 1;
+    win_flush_thread = CreateThread(NULL, 0, win_flush_thread_func, NULL, 0, NULL);
+    if (!win_flush_thread) {
+        log_error("[增量监控] 创建刷新线程失败");
+        CloseHandle(win_flush_event);
+        win_watcher_running = 0;
+        win_flush_running = 0;
+        DeleteCriticalSection(&win_event_cs);
+        return LV_ERROR_UNKNOWN;
+    }
 
     log_info("[增量监控] 注册目录监控: %s", config->scan_directory);
     win_watch_directory_recursive(config->scan_directory);
@@ -312,6 +422,12 @@ lv_error_t video_scanner_start_watcher_impl(void)
     if (win_watch_count == 0) {
         log_warning("[增量监控] 未成功注册任何目录监控");
         win_watcher_running = 0;
+        win_flush_running = 0;
+        SetEvent(win_flush_event);
+        WaitForSingleObject(win_flush_thread, 2000);
+        CloseHandle(win_flush_thread);
+        CloseHandle(win_flush_event);
+        DeleteCriticalSection(&win_event_cs);
         return LV_ERROR_UNKNOWN;
     }
 
@@ -327,7 +443,23 @@ lv_error_t video_scanner_stop_watcher_impl(void)
     log_info("[增量监控] 正在停止文件监控...");
     win_watcher_running = 0;
 
+    /* Stop flush thread */
+    win_flush_running = 0;
+    if (win_flush_event) {
+        SetEvent(win_flush_event);
+    }
+    if (win_flush_thread) {
+        WaitForSingleObject(win_flush_thread, 3000);
+        CloseHandle(win_flush_thread);
+        win_flush_thread = NULL;
+    }
+    if (win_flush_event) {
+        CloseHandle(win_flush_event);
+        win_flush_event = NULL;
+    }
+
     win_stop_all_watches();
+    DeleteCriticalSection(&win_event_cs);
 
     log_info("[增量监控] 文件监控已停止");
     return LV_OK;

@@ -2,7 +2,11 @@
 #include "thread.h"
 #include <stdio.h>
 #include <stdlib.h>
+#ifdef _WIN32
+#include "../../src/include/platform.h"
+#else
 #include <unistd.h>
+#endif
 
 static int test_results = 0;
 static int test_count = 0;
