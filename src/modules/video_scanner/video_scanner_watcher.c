@@ -24,6 +24,7 @@ typedef struct {
 
 typedef struct {
     HANDLE dir_handle;
+    HANDLE event_handle;  /* Manual-reset event for WaitForMultipleObjects */
     OVERLAPPED overlapped;
     char path[4096];
     uint8_t buffer[WATCH_BUFFER_SIZE];
@@ -38,9 +39,9 @@ static volatile int win_watcher_running = 0;
 static win_pending_event_t win_event_queue[WIN_BATCH_SIZE];
 static volatile int win_event_count = 0;
 static CRITICAL_SECTION win_event_cs;
-static HANDLE win_flush_event = NULL;
 static HANDLE win_flush_thread = NULL;
 static volatile int win_flush_running = 0;
+static HANDLE win_wake_event = NULL;  /* Event to wake up the main poll loop */
 
 /* Forward declarations */
 static void win_process_video_create(const char *real_path);
@@ -51,6 +52,9 @@ static void win_flush_events(void);
 static DWORD WINAPI win_flush_thread_func(LPVOID arg);
 static void win_handle_notification(win_watch_entry_t *watch,
                                     FILE_NOTIFY_INFORMATION *info);
+static DWORD WINAPI win_watcher_poll_thread(LPVOID arg);
+static int win_watch_directory_recursive(const char *path);
+
 static void win_enqueue_event(const char *path, int action)
 {
     EnterCriticalSection(&win_event_cs);
@@ -121,8 +125,10 @@ static DWORD WINAPI win_flush_thread_func(LPVOID arg)
     log_info("[增量监控] 去抖刷新线程启动 (debounce=%dms)", WIN_DEBOUNCE_MS);
 
     while (win_flush_running) {
-        WaitForSingleObject(win_flush_event, WIN_DEBOUNCE_MS);
-        win_flush_events();
+        WaitForSingleObject(win_wake_event, WIN_DEBOUNCE_MS);
+        if (win_event_count > 0) {
+            win_flush_events();
+        }
     }
 
     /* Final flush on shutdown */
@@ -130,9 +136,6 @@ static DWORD WINAPI win_flush_thread_func(LPVOID arg)
     log_info("[增量监控] 去抖刷新线程停止");
     return 0;
 }
-
-static DWORD WINAPI win_watch_directory_thread(LPVOID arg);
-static int win_watch_directory_recursive(const char *path);
 
 static void win_process_video_create(const char *real_path)
 {
@@ -222,39 +225,65 @@ static void win_handle_notification(win_watch_entry_t *watch,
     win_enqueue_event(real_path, info->Action);
 }
 
-static DWORD WINAPI win_watch_directory_thread(LPVOID arg)
+/*
+ * Single poll thread: uses WaitForMultipleObjects to efficiently wait
+ * for changes across all monitored directories. Only ONE thread is used
+ * regardless of how many directories are being watched.
+ */
+static DWORD WINAPI win_watcher_poll_thread(LPVOID arg)
 {
-    win_watch_entry_t *watch = (win_watch_entry_t *)arg;
+    (void)arg;
+    log_info("[增量监控] 轮询线程启动 (监控 %d 个目录)", win_watch_count);
 
-    while (watch->active && win_watcher_running) {
-        DWORD bytes_returned;
-        BOOL success = ReadDirectoryChangesW(
-            watch->dir_handle,
-            watch->buffer,
-            sizeof(watch->buffer),
-            TRUE,  /* watch subtree */
-            FILE_NOTIFY_CHANGE_FILE_NAME |
-            FILE_NOTIFY_CHANGE_DIR_NAME |
-            FILE_NOTIFY_CHANGE_SIZE |
-            FILE_NOTIFY_CHANGE_CREATION |
-            FILE_NOTIFY_CHANGE_LAST_WRITE,
-            &bytes_returned,
-            &watch->overlapped,
-            NULL
-        );
+    while (win_watcher_running) {
+        /* Build array of event handles for WaitForMultipleObjects */
+        /* Index 0 = wake event, 1..win_watch_count = directory events */
+        int total_handles = win_watch_count + 1;
+        if (total_handles > MAXIMUM_WAIT_OBJECTS) {
+            /* MAXIMUM_WAIT_OBJECTS is 64, batch if we have more */
+            total_handles = MAXIMUM_WAIT_OBJECTS;
+        }
 
-        if (!success) {
-            DWORD err = GetLastError();
-            if (err == ERROR_INVALID_HANDLE || !watch->active || !win_watcher_running) {
-                break;
-            }
-            /* For other errors, wait a bit and retry */
+        HANDLE handles[MAXIMUM_WAIT_OBJECTS];
+        handles[0] = win_wake_event;
+
+        int watch_limit = total_handles - 1;
+        if (watch_limit > win_watch_count) watch_limit = win_watch_count;
+
+        for (int i = 0; i < watch_limit; i++) {
+            handles[i + 1] = win_watches[i]->event_handle;
+        }
+
+        DWORD wait_result = WaitForMultipleObjects(
+            (DWORD)(watch_limit + 1), handles, FALSE, 500);
+
+        if (!win_watcher_running) break;
+
+        if (wait_result == WAIT_FAILED) {
+            log_error("[增量监控] WaitForMultipleObjects 失败: %lu", GetLastError());
             Sleep(1000);
             continue;
         }
 
-        /* Process notifications */
-        if (bytes_returned > 0) {
+        if (wait_result == WAIT_TIMEOUT) continue;
+
+        /* Determine which directory signaled */
+        int signaled_idx = (int)(wait_result - WAIT_OBJECT_0);
+        if (signaled_idx == 0) continue;  /* wake event */
+
+        int watch_idx = signaled_idx - 1;
+        if (watch_idx < 0 || watch_idx >= win_watch_count) continue;
+
+        win_watch_entry_t *watch = win_watches[watch_idx];
+        if (!watch || !watch->active) continue;
+
+        /* Get overlapped result */
+        DWORD bytes_returned = 0;
+        BOOL success = GetOverlappedResult(watch->dir_handle,
+                                           &watch->overlapped,
+                                           &bytes_returned, FALSE);
+
+        if (success && bytes_returned > 0) {
             BYTE *ptr = watch->buffer;
             while (ptr < watch->buffer + bytes_returned) {
                 FILE_NOTIFY_INFORMATION *info = (FILE_NOTIFY_INFORMATION *)ptr;
@@ -262,9 +291,35 @@ static DWORD WINAPI win_watch_directory_thread(LPVOID arg)
                 if (info->NextEntryOffset == 0) break;
                 ptr += info->NextEntryOffset;
             }
+
+            /* Signal flush thread to process events */
+            SetEvent(win_wake_event);
+        }
+
+        /* Re-arm the watch by issuing another async ReadDirectoryChangesW */
+        if (watch->active && win_watcher_running) {
+            memset(&watch->overlapped, 0, sizeof(watch->overlapped));
+            ResetEvent(watch->event_handle);
+            watch->overlapped.hEvent = watch->event_handle;
+
+            ReadDirectoryChangesW(
+                watch->dir_handle,
+                watch->buffer,
+                sizeof(watch->buffer),
+                TRUE,  /* watch subtree */
+                FILE_NOTIFY_CHANGE_FILE_NAME |
+                FILE_NOTIFY_CHANGE_DIR_NAME |
+                FILE_NOTIFY_CHANGE_SIZE |
+                FILE_NOTIFY_CHANGE_CREATION |
+                FILE_NOTIFY_CHANGE_LAST_WRITE,
+                NULL,  /* bytes_returned not used for async */
+                &watch->overlapped,
+                NULL   /* completion routine */
+            );
         }
     }
 
+    log_info("[增量监控] 轮询线程停止");
     return 0;
 }
 
@@ -309,7 +364,15 @@ static int win_watch_directory_recursive(const char *path)
     }
 
     entry->dir_handle = hDir;
+    entry->event_handle = CreateEventW(NULL, TRUE, FALSE, NULL);
+    if (!entry->event_handle) {
+        CloseHandle(hDir);
+        free(entry);
+        return -1;
+    }
+
     memset(&entry->overlapped, 0, sizeof(entry->overlapped));
+    entry->overlapped.hEvent = entry->event_handle;
     strncpy(entry->path, path, sizeof(entry->path) - 1);
     entry->active = 1;
 
@@ -318,17 +381,21 @@ static int win_watch_directory_recursive(const char *path)
 
     log_debug("[增量监控] 监控目录: %s (total=%d)", path, win_watch_count);
 
-    /* Create a thread for this directory */
-    HANDLE hThread = CreateThread(NULL, 0, win_watch_directory_thread, entry, 0, NULL);
-    if (hThread == NULL) {
-        log_warning("[增量监控] 无法创建监控线程: %s", path);
-        entry->active = 0;
-        CloseHandle(hDir);
-        free(entry);
-        win_watch_count--;
-        return -1;
-    }
-    CloseHandle(hThread);  /* Thread runs independently */
+    /* Issue initial async read */
+    ReadDirectoryChangesW(
+        hDir,
+        entry->buffer,
+        sizeof(entry->buffer),
+        TRUE,  /* watch subtree */
+        FILE_NOTIFY_CHANGE_FILE_NAME |
+        FILE_NOTIFY_CHANGE_DIR_NAME |
+        FILE_NOTIFY_CHANGE_SIZE |
+        FILE_NOTIFY_CHANGE_CREATION |
+        FILE_NOTIFY_CHANGE_LAST_WRITE,
+        NULL,
+        &entry->overlapped,
+        NULL
+    );
 
     /* Recursively watch subdirectories */
     char search_path[4096];
@@ -367,10 +434,11 @@ static void win_stop_all_watches(void)
     for (int i = 0; i < win_watch_count; i++) {
         if (win_watches[i]) {
             win_watches[i]->active = 0;
-            CancelIoEx(&win_watches[i]->overlapped, NULL);
-            /* Give thread time to exit */
-            Sleep(100);
+            CancelIoEx(win_watches[i]->dir_handle, &win_watches[i]->overlapped);
             CloseHandle(win_watches[i]->dir_handle);
+            if (win_watches[i]->event_handle) {
+                CloseHandle(win_watches[i]->event_handle);
+            }
             free(win_watches[i]);
             win_watches[i] = NULL;
         }
@@ -396,20 +464,21 @@ lv_error_t video_scanner_start_watcher_impl(void)
     win_event_count = 0;
     InitializeCriticalSection(&win_event_cs);
 
-    /* Start debounce flush thread */
-    win_flush_event = CreateEventW(NULL, FALSE, FALSE, NULL);
-    if (!win_flush_event) {
-        log_error("[增量监控] 创建刷新事件失败");
+    /* Create wake event for debounce thread and poll loop */
+    win_wake_event = CreateEventW(NULL, FALSE, FALSE, NULL);
+    if (!win_wake_event) {
+        log_error("[增量监控] 创建唤醒事件失败");
         win_watcher_running = 0;
         DeleteCriticalSection(&win_event_cs);
         return LV_ERROR_UNKNOWN;
     }
 
+    /* Start debounce flush thread */
     win_flush_running = 1;
     win_flush_thread = CreateThread(NULL, 0, win_flush_thread_func, NULL, 0, NULL);
     if (!win_flush_thread) {
         log_error("[增量监控] 创建刷新线程失败");
-        CloseHandle(win_flush_event);
+        CloseHandle(win_wake_event);
         win_watcher_running = 0;
         win_flush_running = 0;
         DeleteCriticalSection(&win_event_cs);
@@ -423,15 +492,32 @@ lv_error_t video_scanner_start_watcher_impl(void)
         log_warning("[增量监控] 未成功注册任何目录监控");
         win_watcher_running = 0;
         win_flush_running = 0;
-        SetEvent(win_flush_event);
+        SetEvent(win_wake_event);
         WaitForSingleObject(win_flush_thread, 2000);
         CloseHandle(win_flush_thread);
-        CloseHandle(win_flush_event);
+        CloseHandle(win_wake_event);
         DeleteCriticalSection(&win_event_cs);
         return LV_ERROR_UNKNOWN;
     }
 
     log_info("[增量监控] 已注册 %d 个目录监控点", win_watch_count);
+
+    /* Start single poll thread */
+    HANDLE poll_thread = CreateThread(NULL, 0, win_watcher_poll_thread, NULL, 0, NULL);
+    if (!poll_thread) {
+        log_error("[增量监控] 创建轮询线程失败");
+        win_stop_all_watches();
+        win_watcher_running = 0;
+        win_flush_running = 0;
+        SetEvent(win_wake_event);
+        WaitForSingleObject(win_flush_thread, 2000);
+        CloseHandle(win_flush_thread);
+        CloseHandle(win_wake_event);
+        DeleteCriticalSection(&win_event_cs);
+        return LV_ERROR_UNKNOWN;
+    }
+    CloseHandle(poll_thread);  /* Thread runs independently */
+
     log_info("[增量监控] 增量文件监控系统初始化完成");
     return LV_OK;
 }
@@ -443,22 +529,32 @@ lv_error_t video_scanner_stop_watcher_impl(void)
     log_info("[增量监控] 正在停止文件监控...");
     win_watcher_running = 0;
 
+    /* Wake up poll thread and flush thread */
+    if (win_wake_event) {
+        SetEvent(win_wake_event);
+    }
+
     /* Stop flush thread */
     win_flush_running = 0;
-    if (win_flush_event) {
-        SetEvent(win_flush_event);
+    if (win_wake_event) {
+        SetEvent(win_wake_event);
     }
     if (win_flush_thread) {
         WaitForSingleObject(win_flush_thread, 3000);
         CloseHandle(win_flush_thread);
         win_flush_thread = NULL;
     }
-    if (win_flush_event) {
-        CloseHandle(win_flush_event);
-        win_flush_event = NULL;
-    }
+
+    /* Give poll thread time to exit (it checks win_watcher_running) */
+    Sleep(500);
 
     win_stop_all_watches();
+
+    if (win_wake_event) {
+        CloseHandle(win_wake_event);
+        win_wake_event = NULL;
+    }
+
     DeleteCriticalSection(&win_event_cs);
 
     log_info("[增量监控] 文件监控已停止");
