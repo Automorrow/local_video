@@ -6,6 +6,7 @@
 #ifdef _WIN32
 #include "../../src/include/platform.h"
 #include <io.h>
+#include <fcntl.h>
 #else
 #include <unistd.h>
 #endif
