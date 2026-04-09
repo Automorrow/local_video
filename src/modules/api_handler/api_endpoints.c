@@ -5,6 +5,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <inttypes.h>
 
 static int video_list_callback(const VideoInfo *video, void *user_data)
 {
@@ -16,7 +17,7 @@ static int video_list_callback(const VideoInfo *video, void *user_data)
     }
 
     api_buffer_append_str(buf, "{\"id\":");
-    snprintf(tmp, sizeof(tmp), "%ld", (long)video->id);
+    snprintf(tmp, sizeof(tmp), "%" PRId64, (int64_t)video->id);
     api_buffer_append_str(buf, tmp);
     api_buffer_append_str(buf, ",\"title\":\"");
     api_buffer_append_json_str(buf, video->title);
@@ -25,7 +26,7 @@ static int video_list_callback(const VideoInfo *video, void *user_data)
     api_buffer_append_str(buf, "\",\"category\":\"");
     api_buffer_append_json_str(buf, video->category);
     api_buffer_append_str(buf, "\",\"size\":");
-    snprintf(tmp, sizeof(tmp), "%ld", (long)video->size);
+    snprintf(tmp, sizeof(tmp), "%" PRId64, (int64_t)video->size);
     api_buffer_append_str(buf, tmp);
     api_buffer_append_str(buf, "}");
     return 0;
@@ -41,17 +42,17 @@ static int history_callback(const HistoryInfo *history, void *user_data)
     }
 
     api_buffer_append_str(buf, "{\"id\":");
-    snprintf(tmp, sizeof(tmp), "%ld", (long)history->id);
+    snprintf(tmp, sizeof(tmp), "%" PRId64, (int64_t)history->id);
     api_buffer_append_str(buf, tmp);
     api_buffer_append_str(buf, ",\"video_id\":");
-    snprintf(tmp, sizeof(tmp), "%ld", (long)history->video_id);
+    snprintf(tmp, sizeof(tmp), "%" PRId64, (int64_t)history->video_id);
     api_buffer_append_str(buf, tmp);
     api_buffer_append_str(buf, ",\"title\":\"");
     api_buffer_append_json_str(buf, history->video_title);
     api_buffer_append_str(buf, "\",\"path\":\"");
     api_buffer_append_json_str(buf, history->video_path);
     api_buffer_append_str(buf, "\",\"position\":");
-    snprintf(tmp, sizeof(tmp), "%ld", (long)history->position);
+    snprintf(tmp, sizeof(tmp), "%" PRId64, (int64_t)history->position);
     api_buffer_append_str(buf, tmp);
     api_buffer_append_str(buf, "}");
     return 0;
@@ -67,10 +68,10 @@ static int favorite_callback(const FavoriteInfo *favorite, void *user_data)
     }
 
     api_buffer_append_str(buf, "{\"id\":");
-    snprintf(tmp, sizeof(tmp), "%ld", (long)favorite->id);
+    snprintf(tmp, sizeof(tmp), "%" PRId64, (int64_t)favorite->id);
     api_buffer_append_str(buf, tmp);
     api_buffer_append_str(buf, ",\"video_id\":");
-    snprintf(tmp, sizeof(tmp), "%ld", (long)favorite->video_id);
+    snprintf(tmp, sizeof(tmp), "%" PRId64, (int64_t)favorite->video_id);
     api_buffer_append_str(buf, tmp);
     api_buffer_append_str(buf, ",\"title\":\"");
     api_buffer_append_json_str(buf, favorite->video_title);
@@ -89,10 +90,10 @@ static int blacklist_list_callback(const BlacklistInfo *entry, void *user_data)
         api_buffer_append_str(buf, ",");
     }
 
-    snprintf(tmp, sizeof(tmp), "{\"id\":%ld,\"path\":\"", (long)entry->id);
+    snprintf(tmp, sizeof(tmp), "{\"id\":%" PRId64 ",\"path\":\"", (int64_t)entry->id);
     api_buffer_append_str(buf, tmp);
     api_buffer_append_json_str(buf, entry->path);
-    snprintf(tmp, sizeof(tmp), "\",\"created_at\":%ld}", (long)entry->created_at);
+    snprintf(tmp, sizeof(tmp), "\",\"created_at\":%" PRId64 "}", (int64_t)entry->created_at);
     api_buffer_append_str(buf, tmp);
     return 0;
 }
@@ -212,7 +213,7 @@ lv_error_t api_add_history(int client_fd, const char *body)
     int64_t position = 0;
 
     if (body) {
-        sscanf(body, "{\"video_id\":%ld,\"position\":%ld}", &video_id, &position);
+        sscanf(body, "{\"video_id\":%" SCNd64 ",\"position\":%" SCNd64 "}", &video_id, &position);
     }
 
     if (video_id > 0) {
@@ -273,7 +274,7 @@ lv_error_t api_add_favorite(int client_fd, const char *body)
     int64_t video_id = 0;
 
     if (body) {
-        sscanf(body, "{\"video_id\":%ld}", &video_id);
+        sscanf(body, "{\"video_id\":%" SCNd64 "}", &video_id);
     }
 
     if (video_id > 0) {
@@ -288,7 +289,7 @@ lv_error_t api_remove_favorite(int client_fd, const char *path)
     int64_t video_id = 0;
 
     if (path) {
-        sscanf(path, "/api/favorites/%ld", &video_id);
+        sscanf(path, "/api/favorites/%" SCNd64, &video_id);
     }
 
     if (video_id > 0) {
@@ -349,7 +350,7 @@ lv_error_t api_add_blacklist(int client_fd, const char *body)
         char response[512];
 
         db_manager_video_blacklist_by_path_prefix(path);
-        snprintf(response, sizeof(response), "{\"success\":true,\"data\":{\"id\":%ld}}", (long)new_id);
+        snprintf(response, sizeof(response), "{\"success\":true,\"data\":{\"id\":%" PRId64 "}}", (int64_t)new_id);
         return api_send_json_response(client_fd, response, 200);
     }
 

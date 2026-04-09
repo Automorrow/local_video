@@ -41,9 +41,17 @@
     
     typedef int socklen_t;
     
-    /* Windows doesn't have these signals */
+    /* Windows doesn't have SIGPIPE */
+    #ifndef SIGPIPE
     #define SIGPIPE 13
+    #endif
+    /* SIG_IGN may already be defined by MinGW's signal.h via pthread.h */
+    #ifndef SIG_IGN
     #define SIG_IGN ((void (*)(int))1)
+    #endif
+    
+    /* ftruncate is POSIX-only; use _chsize_s on Windows */
+    #define ftruncate(fd, size) _chsize_s(fd, size)
     
     /* Windows stat compatibility - use _stat64 for large file support */
     #define stat _stat64
