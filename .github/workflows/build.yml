@@ -70,6 +70,34 @@ jobs:
         mkdir -p build && cd build
         cmake .. -G "MinGW Makefiles" -DCMAKE_BUILD_TYPE=Release -DCMAKE_MAKE_PROGRAM=/mingw64/bin/mingw32-make.exe
         mingw32-make -j$(nproc)
+
+    - name: Run unit tests
+      shell: msys2 {0}
+      run: |
+        export PATH="/mingw64/bin:$PATH"
+        cd build
+        echo "=== Running unit tests ==="
+        failed=0
+        for test in bin/test_module bin/test_list bin/test_notifier bin/test_log bin/test_thread bin/test_json bin/test_db bin/test_video_scanner; do
+          if [ -f "$test" ]; then
+            echo "--- Running $(basename $test) ---"
+            if ./$test; then
+              echo "PASS: $(basename $test)"
+            else
+              echo "FAIL: $(basename $test)"
+              failed=$((failed + 1))
+            fi
+          else
+            echo "SKIP: $(basename $test) not found"
+          fi
+        done
+        echo "=== Test Summary ==="
+        if [ $failed -eq 0 ]; then
+          echo "All tests passed!"
+        else
+          echo "$failed test(s) failed!"
+          exit 1
+        fi
     
     - name: Collect Windows files
       shell: msys2 {0}
