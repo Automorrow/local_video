@@ -13,8 +13,6 @@ static void signal_handler(int sig)
 {
     (void)sig;
     running = 0;
-    log_info("Received signal, shutting down...");
-    http_server_stop();
 }
 
 int main(int argc, char *argv[])

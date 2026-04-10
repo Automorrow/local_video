@@ -32,8 +32,9 @@ typedef struct {
 } win_watch_entry_t;
 
 static win_watch_entry_t *win_watches[MAX_WATCH_DIRS_WIN];
-static int win_watch_count = 0;
+static volatile int win_watch_count = 0;
 static volatile int win_watcher_running = 0;
+static HANDLE win_poll_thread_handle = NULL;  /* For reliable join on shutdown */
 
 /* Debounce / batch processing */
 static win_pending_event_t win_event_queue[WIN_BATCH_SIZE];
@@ -227,95 +228,148 @@ static void win_handle_notification(win_watch_entry_t *watch,
 
 /*
  * Single poll thread: uses WaitForMultipleObjects to efficiently wait
- * for changes across all monitored directories. Only ONE thread is used
- * regardless of how many directories are being watched.
+ * for changes across all monitored directories. Handles >64 directories
+ * by polling in batches. Only ONE thread is used regardless of how many
+ * directories are being watched.
  */
 static DWORD WINAPI win_watcher_poll_thread(LPVOID arg)
 {
     (void)arg;
     log_info("[增量监控] 轮询线程启动 (监控 %d 个目录)", win_watch_count);
 
+    HANDLE handles[MAXIMUM_WAIT_OBJECTS];
+    int batch_start = 0;
+
     while (win_watcher_running) {
-        /* Build array of event handles for WaitForMultipleObjects */
-        /* Index 0 = wake event, 1..win_watch_count = directory events */
-        int total_handles = win_watch_count + 1;
-        if (total_handles > MAXIMUM_WAIT_OBJECTS) {
-            /* MAXIMUM_WAIT_OBJECTS is 64, batch if we have more */
-            total_handles = MAXIMUM_WAIT_OBJECTS;
-        }
-
-        HANDLE handles[MAXIMUM_WAIT_OBJECTS];
-        handles[0] = win_wake_event;
-
-        int watch_limit = total_handles - 1;
-        if (watch_limit > win_watch_count) watch_limit = win_watch_count;
-
-        for (int i = 0; i < watch_limit; i++) {
-            handles[i + 1] = win_watches[i]->event_handle;
-        }
-
-        DWORD wait_result = WaitForMultipleObjects(
-            (DWORD)(watch_limit + 1), handles, FALSE, 500);
-
-        if (!win_watcher_running) break;
-
-        if (wait_result == WAIT_FAILED) {
-            log_error("[增量监控] WaitForMultipleObjects 失败: %lu", GetLastError());
-            Sleep(1000);
+        int count = win_watch_count;  /* snapshot */
+        if (count == 0) {
+            Sleep(500);
             continue;
         }
 
-        if (wait_result == WAIT_TIMEOUT) continue;
+        /* Process watches in batches of MAXIMUM_WAIT_OBJECTS-1 */
+        int processed_any = 0;
 
-        /* Determine which directory signaled */
-        int signaled_idx = (int)(wait_result - WAIT_OBJECT_0);
-        if (signaled_idx == 0) continue;  /* wake event */
-
-        int watch_idx = signaled_idx - 1;
-        if (watch_idx < 0 || watch_idx >= win_watch_count) continue;
-
-        win_watch_entry_t *watch = win_watches[watch_idx];
-        if (!watch || !watch->active) continue;
-
-        /* Get overlapped result */
-        DWORD bytes_returned = 0;
-        BOOL success = GetOverlappedResult(watch->dir_handle,
-                                           &watch->overlapped,
-                                           &bytes_returned, FALSE);
-
-        if (success && bytes_returned > 0) {
-            BYTE *ptr = watch->buffer;
-            while (ptr < watch->buffer + bytes_returned) {
-                FILE_NOTIFY_INFORMATION *info = (FILE_NOTIFY_INFORMATION *)ptr;
-                win_handle_notification(watch, info);
-                if (info->NextEntryOffset == 0) break;
-                ptr += info->NextEntryOffset;
+        for (batch_start = 0; batch_start < count && win_watcher_running; ) {
+            int batch_size = count - batch_start;
+            if (batch_size > MAXIMUM_WAIT_OBJECTS - 1) {
+                batch_size = MAXIMUM_WAIT_OBJECTS - 1;
             }
 
-            /* Signal flush thread to process events */
-            SetEvent(win_wake_event);
+            handles[0] = win_wake_event;
+            for (int i = 0; i < batch_size; i++) {
+                int idx = batch_start + i;
+                if (idx < count && win_watches[idx] && win_watches[idx]->active) {
+                    handles[i + 1] = win_watches[idx]->event_handle;
+                } else {
+                    handles[i + 1] = win_wake_event;  /* dummy */
+                }
+            }
+
+            DWORD wait_result = WaitForMultipleObjects(
+                (DWORD)(batch_size + 1), handles, FALSE, 0);  /* non-blocking check */
+
+            if (!win_watcher_running) break;
+
+            if (wait_result == WAIT_TIMEOUT) {
+                batch_start += batch_size;
+                continue;
+            }
+
+            if (wait_result == WAIT_FAILED) {
+                batch_start += batch_size;
+                continue;
+            }
+
+            int signaled_idx = (int)(wait_result - WAIT_OBJECT_0);
+            if (signaled_idx == 0) {
+                /* Wake event signaled, break out of batch loop */
+                break;
+            }
+
+            int watch_idx = batch_start + (signaled_idx - 1);
+            if (watch_idx < 0 || watch_idx >= count) {
+                batch_start += batch_size;
+                continue;
+            }
+
+            win_watch_entry_t *watch = win_watches[watch_idx];
+            if (!watch || !watch->active) {
+                batch_start += batch_size;
+                continue;
+            }
+
+            /* Get overlapped result */
+            DWORD bytes_returned = 0;
+            DWORD err = 0;
+            BOOL success = GetOverlappedResult(watch->dir_handle,
+                                               &watch->overlapped,
+                                               &bytes_returned, FALSE);
+
+            if (!success) {
+                err = GetLastError();
+                if (err == ERROR_HANDLE_EOF || err == ERROR_INVALID_HANDLE ||
+                    err == ERROR_ACCESS_DENIED) {
+                    log_debug("[增量监控] 目录已删除或不可访问: %s", watch->path);
+                    watch->active = 0;
+                    batch_start += batch_size;
+                    continue;
+                }
+                batch_start += batch_size;
+                continue;
+            }
+
+            if (bytes_returned > 0) {
+                BYTE *ptr = watch->buffer;
+                while (ptr < watch->buffer + bytes_returned) {
+                    FILE_NOTIFY_INFORMATION *info = (FILE_NOTIFY_INFORMATION *)ptr;
+                    win_handle_notification(watch, info);
+                    if (info->NextEntryOffset == 0) break;
+                    ptr += info->NextEntryOffset;
+                }
+
+                /* Signal flush thread to process events */
+                SetEvent(win_wake_event);
+                processed_any = 1;
+            }
+
+            /* Re-arm the watch */
+            if (watch->active && win_watcher_running) {
+                memset(&watch->overlapped, 0, sizeof(watch->overlapped));
+                ResetEvent(watch->event_handle);
+                watch->overlapped.hEvent = watch->event_handle;
+
+                BOOL armed = ReadDirectoryChangesW(
+                    watch->dir_handle,
+                    watch->buffer,
+                    sizeof(watch->buffer),
+                    TRUE,
+                    FILE_NOTIFY_CHANGE_FILE_NAME |
+                    FILE_NOTIFY_CHANGE_DIR_NAME |
+                    FILE_NOTIFY_CHANGE_SIZE |
+                    FILE_NOTIFY_CHANGE_CREATION |
+                    FILE_NOTIFY_CHANGE_LAST_WRITE,
+                    NULL,
+                    &watch->overlapped,
+                    NULL
+                );
+
+                if (!armed) {
+                    err = GetLastError();
+                    if (err == ERROR_HANDLE_EOF || err == ERROR_INVALID_HANDLE) {
+                        watch->active = 0;
+                    }
+                }
+            }
+
+            /* Don't advance batch_start; re-check same batch next iteration */
+            /* (the signaled handle may have more events) */
+            break;
         }
 
-        /* Re-arm the watch by issuing another async ReadDirectoryChangesW */
-        if (watch->active && win_watcher_running) {
-            memset(&watch->overlapped, 0, sizeof(watch->overlapped));
-            ResetEvent(watch->event_handle);
-            watch->overlapped.hEvent = watch->event_handle;
-
-            ReadDirectoryChangesW(
-                watch->dir_handle,
-                watch->buffer,
-                sizeof(watch->buffer),
-                TRUE,  /* watch subtree */
-                FILE_NOTIFY_CHANGE_FILE_NAME |
-                FILE_NOTIFY_CHANGE_DIR_NAME |
-                FILE_NOTIFY_CHANGE_SIZE |
-                FILE_NOTIFY_CHANGE_CREATION |
-                FILE_NOTIFY_CHANGE_LAST_WRITE,
-                NULL,  /* bytes_returned not used for async */
-                &watch->overlapped,
-                NULL   /* completion routine */
-            );
+        /* If no events in any batch, sleep to avoid busy-loop */
+        if (!processed_any) {
+            WaitForSingleObject(win_wake_event, 100);
         }
     }
 
@@ -434,7 +488,12 @@ static void win_stop_all_watches(void)
     for (int i = 0; i < win_watch_count; i++) {
         if (win_watches[i]) {
             win_watches[i]->active = 0;
+            /* Cancel pending I/O and wait for completion */
             CancelIoEx(win_watches[i]->dir_handle, &win_watches[i]->overlapped);
+            /* Wait for the overlapped operation to complete (up to 1s) */
+            GetOverlappedResult(win_watches[i]->dir_handle,
+                                &win_watches[i]->overlapped,
+                                &(DWORD){0}, TRUE);
             CloseHandle(win_watches[i]->dir_handle);
             if (win_watches[i]->event_handle) {
                 CloseHandle(win_watches[i]->event_handle);
@@ -503,8 +562,8 @@ lv_error_t video_scanner_start_watcher_impl(void)
     log_info("[增量监控] 已注册 %d 个目录监控点", win_watch_count);
 
     /* Start single poll thread */
-    HANDLE poll_thread = CreateThread(NULL, 0, win_watcher_poll_thread, NULL, 0, NULL);
-    if (!poll_thread) {
+    win_poll_thread_handle = CreateThread(NULL, 0, win_watcher_poll_thread, NULL, 0, NULL);
+    if (!win_poll_thread_handle) {
         log_error("[增量监控] 创建轮询线程失败");
         win_stop_all_watches();
         win_watcher_running = 0;
@@ -516,7 +575,6 @@ lv_error_t video_scanner_start_watcher_impl(void)
         DeleteCriticalSection(&win_event_cs);
         return LV_ERROR_UNKNOWN;
     }
-    CloseHandle(poll_thread);  /* Thread runs independently */
 
     log_info("[增量监控] 增量文件监控系统初始化完成");
     return LV_OK;
@@ -545,8 +603,12 @@ lv_error_t video_scanner_stop_watcher_impl(void)
         win_flush_thread = NULL;
     }
 
-    /* Give poll thread time to exit (it checks win_watcher_running) */
-    Sleep(500);
+    /* Wait for poll thread to exit reliably */
+    if (win_poll_thread_handle) {
+        WaitForSingleObject(win_poll_thread_handle, 3000);
+        CloseHandle(win_poll_thread_handle);
+        win_poll_thread_handle = NULL;
+    }
 
     win_stop_all_watches();
 

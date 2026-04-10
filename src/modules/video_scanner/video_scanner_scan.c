@@ -7,10 +7,15 @@
 #include <string.h>
 #include <sys/stat.h>
 
+#define MAX_SCAN_DEPTH 128
+
 #ifdef _WIN32
 /* ====== Windows Implementation (FindFirstFileW/FindNextFileW) ====== */
 #include <windows.h>
 #include <io.h>
+
+/* Forward declarations */
+static lv_error_t scan_directory_incremental_ex(const char *dir_path, int *file_count, int depth);
 
 static lv_error_t scan_single_file(const char *full_path)
 {
@@ -43,6 +48,16 @@ static lv_error_t scan_single_file(const char *full_path)
 
 static lv_error_t scan_directory_incremental(const char *dir_path, int *file_count)
 {
+    return scan_directory_incremental_ex(dir_path, file_count, 0);
+}
+
+static lv_error_t scan_directory_incremental_ex(const char *dir_path, int *file_count, int depth)
+{
+    if (depth >= MAX_SCAN_DEPTH) {
+        log_warning("[扫描] 目录嵌套过深，跳过: %s", dir_path);
+        return LV_OK;
+    }
+
     bool in_blacklist = false;
     if (db_manager_blacklist_check(dir_path, &in_blacklist) == LV_OK && in_blacklist) {
         return LV_OK;
@@ -52,7 +67,6 @@ static lv_error_t scan_directory_incremental(const char *dir_path, int *file_cou
     snprintf(search_path, sizeof(search_path), "%s\\*", dir_path);
 
     WIN32_FIND_DATAW find_data;
-    HANDLE hFind = FindFirstFileW(L"." , &find_data); /* test access */
 
     /* Use wide-char for proper Unicode support */
     WCHAR wsearch_path[4096];
@@ -80,7 +94,7 @@ static lv_error_t scan_directory_incremental(const char *dir_path, int *file_cou
             if (find_data.dwFileAttributes & (FILE_ATTRIBUTE_HIDDEN | FILE_ATTRIBUTE_REPARSE_POINT)) {
                 continue;
             }
-            scan_directory_incremental(full_path, file_count);
+            scan_directory_incremental_ex(full_path, file_count, depth + 1);
         } else {
             if (scan_single_file(full_path) == LV_OK) {
                 (*file_count)++;
@@ -97,6 +111,9 @@ static lv_error_t scan_directory_incremental(const char *dir_path, int *file_cou
 #include <dirent.h>
 #include <limits.h>
 #include <unistd.h>
+
+/* Forward declarations */
+static lv_error_t scan_directory_incremental_ex(const char *dir_path, int *file_count, int depth);
 
 static lv_error_t scan_single_file(const char *full_path)
 {
@@ -124,6 +141,16 @@ static lv_error_t scan_single_file(const char *full_path)
 
 static lv_error_t scan_directory_incremental(const char *dir_path, int *file_count)
 {
+    return scan_directory_incremental_ex(dir_path, file_count, 0);
+}
+
+static lv_error_t scan_directory_incremental_ex(const char *dir_path, int *file_count, int depth)
+{
+    if (depth >= MAX_SCAN_DEPTH) {
+        log_warning("[扫描] 目录嵌套过深，跳过: %s", dir_path);
+        return LV_OK;
+    }
+
     bool in_blacklist = false;
     if (db_manager_blacklist_check(dir_path, &in_blacklist) == LV_OK && in_blacklist) {
         return LV_OK;
@@ -145,7 +172,7 @@ static lv_error_t scan_directory_incremental(const char *dir_path, int *file_cou
         if (stat(full_path, &st) < 0) continue;
 
         if (S_ISDIR(st.st_mode)) {
-            scan_directory_incremental(full_path, file_count);
+            scan_directory_incremental_ex(full_path, file_count, depth + 1);
         } else {
             if (scan_single_file(full_path) == LV_OK) {
                 (*file_count)++;

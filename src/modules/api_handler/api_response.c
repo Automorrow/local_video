@@ -30,11 +30,13 @@ void api_buffer_append(response_buffer_t *buf, const char *str, size_t len)
     }
 
     if (buf->size + len + 1 > buf->capacity) {
-        buf->capacity = (buf->size + len + 4096) * 2;
-        buf->data = realloc(buf->data, buf->capacity);
-        if (!buf->data) {
-            return;
+        size_t new_cap = (buf->size + len + 4096) * 2;
+        char *tmp = realloc(buf->data, new_cap);
+        if (!tmp) {
+            return;  /* original buf->data still valid */
         }
+        buf->data = tmp;
+        buf->capacity = new_cap;
     }
 
     memcpy(buf->data + buf->size, str, len);
@@ -65,6 +67,8 @@ void api_buffer_append_json_str(response_buffer_t *buf, const char *str)
 
 lv_error_t api_send_json_response(int client_fd, const char *json, int status_code)
 {
+    if (!json) json = "{}";
+
     HttpResponse resp;
     char header[512];
     int header_len;
