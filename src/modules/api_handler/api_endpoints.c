@@ -18,6 +18,12 @@
 #include <sys/stat.h>
 #endif
 
+static void resolve_search_recursive(const char *base, const char *target,
+    char *result, size_t result_size,
+    char children[][256], int child_count,
+    int depth, int max_depth);
+static int resolve_verify_children(const char *dir_path, char children[][256], int child_count);
+
 static int video_list_callback(const VideoInfo *video, void *user_data)
 {
     response_buffer_t *buf = (response_buffer_t *)user_data;
@@ -291,31 +297,63 @@ lv_error_t api_update_config(int client_fd, const char *body)
  * POST body: JSON array, e.g. ["431960"]
  * Returns the full path, e.g. "E:\\SteamLibrary\\...\\431960"
  */
-static void resolve_search_recursive(const char *base, const char *target,
-    char *result, size_t result_size, int depth, int max_depth);
-
+/*
+ * Resolve a directory by its name and children.
+ * POST body: {"name":"431960","children":["subdir1","video1.mp4",...]}
+ * Strategy 1: Search database for a video path containing dir_name
+ * Strategy 2: Recursively search filesystem, verify by checking children exist
+ */
 lv_error_t api_resolve_dir(int client_fd, const char *body)
 {
-    if (!body || body[0] != '[') {
+    if (!body || body[0] != '{') {
         return api_send_json_response(client_fd,
             "{\"success\":false,\"error\":\"Invalid body\"}", 400);
     }
 
-    /* Parse first directory name from JSON array */
+    /* Parse "name" field */
     char dir_name[256] = {0};
-    const char *p = body + 1;
-    while (*p && *p != ']' && *p != ',') {
-        if (*p == '"') {
-            p++;
-            const char *start = p;
-            while (*p && *p != '"') p++;
-            size_t len = (size_t)(p - start);
-            if (len >= sizeof(dir_name)) len = sizeof(dir_name) - 1;
-            memcpy(dir_name, start, len);
-            dir_name[len] = '\0';
-            break;
+    const char *name_key = strstr(body, "\"name\"");
+    if (name_key) {
+        const char *colon = strchr(name_key + 5, ':');
+        if (colon) {
+            const char *start = strchr(colon, '"');
+            if (start) {
+                start++;
+                const char *end = strchr(start, '"');
+                if (end) {
+                    size_t len = (size_t)(end - start);
+                    if (len >= sizeof(dir_name)) len = sizeof(dir_name) - 1;
+                    memcpy(dir_name, start, len);
+                    dir_name[len] = '\0';
+                }
+            }
         }
-        p++;
+    }
+
+    /* Parse "children" array */
+    char children[32][256];
+    int child_count = 0;
+    const char *children_key = strstr(body, "\"children\"");
+    if (children_key) {
+        const char *arr_start = strchr(children_key, '[');
+        if (arr_start) {
+            const char *q = arr_start + 1;
+            while (*q && *q != ']' && child_count < 32) {
+                if (*q == '"') {
+                    q++;
+                    const char *s = q;
+                    while (*q && *q != '"') q++;
+                    size_t len = (size_t)(q - s);
+                    if (len >= 256) len = 255;
+                    memcpy(children[child_count], s, len);
+                    children[child_count][len] = '\0';
+                    child_count++;
+                    if (*q == '"') q++;
+                } else {
+                    q++;
+                }
+            }
+        }
     }
 
     if (dir_name[0] == '\0') {
@@ -336,7 +374,7 @@ lv_error_t api_resolve_dir(int client_fd, const char *body)
         }
     }
 
-    /* Strategy 2: Search filesystem on all drives */
+    /* Strategy 2: Search filesystem, verify with children */
     if (!result_path[0]) {
 #ifdef _WIN32
         DWORD drives = GetLogicalDrives();
@@ -345,12 +383,13 @@ lv_error_t api_resolve_dir(int client_fd, const char *body)
             UINT type = GetDriveTypeA((char[]){drive, ':', '\\', 0});
             if (type != DRIVE_FIXED && type != DRIVE_REMOVABLE &&
                 type != DRIVE_REMOTE && type != DRIVE_RAMDISK) continue;
-            /* Recursively search X:\ for a directory named dir_name (max depth 8) */
             char search_root[4] = {drive, ':', '\\', 0};
-            resolve_search_recursive(search_root, dir_name, result_path, sizeof(result_path), 0, 8);
+            resolve_search_recursive(search_root, dir_name, result_path, sizeof(result_path),
+                children, child_count, 0, 8);
         }
 #else
-        resolve_search_recursive("/", dir_name, result_path, sizeof(result_path), 0, 8);
+        resolve_search_recursive("/", dir_name, result_path, sizeof(result_path),
+            children, child_count, 0, 8);
 #endif
     }
 
@@ -368,9 +407,11 @@ lv_error_t api_resolve_dir(int client_fd, const char *body)
     return err;
 }
 
-/* Recursively search for a directory by name (platform-independent) */
+/* Recursively search for a directory by name, verify with children */
 static void resolve_search_recursive(const char *base, const char *target,
-    char *result, size_t result_size, int depth, int max_depth)
+    char *result, size_t result_size,
+    char children[][256], int child_count,
+    int depth, int max_depth)
 {
     if (result[0] || depth > max_depth) return;
 
@@ -393,17 +434,25 @@ static void resolve_search_recursive(const char *base, const char *target,
         char utf8_name[256];
         WideCharToMultiByte(CP_UTF8, 0, find_data.cFileName, -1, utf8_name, sizeof(utf8_name), NULL, NULL);
 
-        /* Check if this directory matches the target name */
         if (STRCASECMP(utf8_name, target) == 0) {
-            snprintf(result, result_size, "%s\\%s", base, utf8_name);
-            FindClose(hFind);
-            return;
+            /* Found matching directory name - verify with children */
+            char candidate[1024];
+            snprintf(candidate, sizeof(candidate), "%s\\%s", base, utf8_name);
+            if (child_count > 0 && resolve_verify_children(candidate, children, child_count)) {
+                snprintf(result, result_size, "%s", candidate);
+                FindClose(hFind);
+                return;
+            } else if (child_count == 0) {
+                snprintf(result, result_size, "%s", candidate);
+                FindClose(hFind);
+                return;
+            }
         }
 
-        /* Recurse into subdirectories */
         char child_path[1024];
         snprintf(child_path, sizeof(child_path), "%s\\%s", base, utf8_name);
-        resolve_search_recursive(child_path, target, result, result_size, depth + 1, max_depth);
+        resolve_search_recursive(child_path, target, result, result_size,
+            children, child_count, depth + 1, max_depth);
         if (result[0]) { FindClose(hFind); return; }
     } while (FindNextFileW(hFind, &find_data));
     FindClose(hFind);
@@ -419,15 +468,70 @@ static void resolve_search_recursive(const char *base, const char *target,
         if (stat(child_path, &st) != 0 || !S_ISDIR(st.st_mode)) continue;
 
         if (strcmp(entry->d_name, target) == 0) {
-            snprintf(result, result_size, "%s", child_path);
-            closedir(dir);
-            return;
+            if (child_count > 0 && resolve_verify_children(child_path, children, child_count)) {
+                snprintf(result, result_size, "%s", child_path);
+                closedir(dir);
+                return;
+            } else if (child_count == 0) {
+                snprintf(result, result_size, "%s", child_path);
+                closedir(dir);
+                return;
+            }
         }
-        resolve_search_recursive(child_path, target, result, result_size, depth + 1, max_depth);
+        resolve_search_recursive(child_path, target, result, result_size,
+            children, child_count, depth + 1, max_depth);
         if (result[0]) { closedir(dir); return; }
     }
     closedir(dir);
 #endif
+}
+
+/* Verify that a directory contains at least one of the expected children */
+static int resolve_verify_children(const char *dir_path, char children[][256], int child_count)
+{
+    if (child_count == 0) return 1;
+    int matches = 0;
+    /* Only need to match a few children to be confident (avoid slow full enumeration) */
+    int needed = child_count > 3 ? 3 : child_count;
+
+#ifdef _WIN32
+    WIN32_FIND_DATAW find_data;
+    WCHAR search_path[1024];
+    char search_utf8[1024];
+    snprintf(search_utf8, sizeof(search_utf8), "%s\\*", dir_path);
+    MultiByteToWideChar(CP_UTF8, 0, search_utf8, -1, search_path, 1024);
+
+    HANDLE hFind = FindFirstFileW(search_path, &find_data);
+    if (hFind == INVALID_HANDLE_VALUE) return 0;
+
+    do {
+        char utf8_name[256];
+        WideCharToMultiByte(CP_UTF8, 0, find_data.cFileName, -1, utf8_name, sizeof(utf8_name), NULL, NULL);
+        for (int i = 0; i < child_count; i++) {
+            if (STRCASECMP(utf8_name, children[i]) == 0) {
+                matches++;
+                if (matches >= needed) { FindClose(hFind); return 1; }
+                break;
+            }
+        }
+    } while (FindNextFileW(hFind, &find_data));
+    FindClose(hFind);
+#else
+    DIR *dir = opendir(dir_path);
+    if (!dir) return 0;
+    struct dirent *entry;
+    while ((entry = readdir(dir)) != NULL) {
+        for (int i = 0; i < child_count; i++) {
+            if (strcmp(entry->d_name, children[i]) == 0) {
+                matches++;
+                if (matches >= needed) { closedir(dir); return 1; }
+                break;
+            }
+        }
+    }
+    closedir(dir);
+#endif
+    return matches >= needed;
 }
 
 #ifdef _WIN32

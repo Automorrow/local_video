@@ -676,11 +676,11 @@ async function pickDirectory() {
         const dirHandle = await window.showDirectoryPicker();
         const dirName = dirHandle.name;
 
-        /* Collect child directory names for path resolution */
-        const childNames = [dirName];
+        /* Collect child names (both files and directories) for precise matching */
+        const childNames = [];
         try {
             for await (const entry of dirHandle.values()) {
-                if (entry.kind === 'directory' && childNames.length < 10) {
+                if (childNames.length < 20) {
                     childNames.push(entry.name);
                 }
             }
@@ -688,11 +688,11 @@ async function pickDirectory() {
 
         showSettingsStatus('Resolving path...', 'success');
 
-        /* Send to backend to resolve full path */
+        /* Send directory name + children to backend for precise resolution */
         const result = await fetchJSON(API_BASE + '/resolve-dir', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(childNames)
+            body: JSON.stringify({ name: dirName, children: childNames })
         });
 
         if (result && result.success && result.path) {
