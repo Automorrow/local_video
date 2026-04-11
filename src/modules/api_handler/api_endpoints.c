@@ -235,8 +235,17 @@ lv_error_t api_update_config(int client_fd, const char *body)
                 if (end) {
                     size_t len = (size_t)(end - start);
                     if (len >= sizeof(dir_str)) len = sizeof(dir_str) - 1;
-                    memcpy(dir_str, start, len);
-                    dir_str[len] = '\0';
+                    /* JSON unescape: \\ -> \, \" -> ", \/ -> / */
+                    size_t j = 0;
+                    for (size_t i = 0; i < len && j < sizeof(dir_str) - 1; i++) {
+                        if (start[i] == '\\' && i + 1 < len) {
+                            i++;
+                            dir_str[j++] = start[i];
+                        } else {
+                            dir_str[j++] = start[i];
+                        }
+                    }
+                    dir_str[j] = '\0';
                 }
             }
         }
@@ -328,7 +337,14 @@ lv_error_t api_browse_directories(int client_fd, const char *query)
         /* Convert to wide char */
         MultiByteToWideChar(CP_UTF8, 0, search_utf8, -1, search_path, 1024);
 
-        HANDLE hFind = FindFirstFileW(search_path, &find_data);
+        HANDLE hFind = FindFirstFileExW(
+            search_path,
+            FindExInfoBasic,        /* No alternate file name */
+            &find_data,
+            FindExSearchLimitToDirectories,  /* Only directories */
+            NULL,
+            0
+        );
         if (hFind != INVALID_HANDLE_VALUE) {
             do {
                 if (wcscmp(find_data.cFileName, L".") == 0 ||
