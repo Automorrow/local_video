@@ -1,4 +1,4 @@
-const CACHE_NAME = 'local-video-v1';
+const CACHE_NAME = 'local-video-v2';
 const PRECACHE_URLS = [
     '/',
     '/index.html',
@@ -32,10 +32,32 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
     if (event.request.method !== 'GET') return;
 
-    if (event.request.url.startsWith('/api/') || event.request.url.startsWith('/video/')) {
+    if (event.request.url.startsWith('/api/') || event.request.url.startsWith('/video/') ||
+        event.request.url.startsWith('/thumbnail/')) {
         return;
     }
 
+    /* HTML: network-first to always get latest version */
+    if (event.request.mode === 'navigate' ||
+        event.request.url.endsWith('/index.html') ||
+        event.request.url.endsWith('/')) {
+        event.respondWith(
+            fetch(event.request).then((response) => {
+                if (response && response.status === 200) {
+                    const responseToCache = response.clone();
+                    caches.open(CACHE_NAME).then((cache) => {
+                        cache.put(event.request, responseToCache);
+                    });
+                }
+                return response;
+            }).catch(() => {
+                return caches.match('/index.html');
+            })
+        );
+        return;
+    }
+
+    /* Static assets (JS/CSS): cache-first with fallback */
     event.respondWith(
         caches.match(event.request).then((cachedResponse) => {
             if (cachedResponse) {
