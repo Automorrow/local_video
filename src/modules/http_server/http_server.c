@@ -124,9 +124,21 @@ static void *server_loop(void *arg)
 
     if (bind(server_socket, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
         log_error("Failed to bind to port %d: %s", server_port, strerror(errno));
-        sock_close(server_socket);
-        server_socket = -1;
-        return NULL;
+        if (server_port != 0) {
+            log_info("Falling back to random port...");
+            server_port = 0;
+            addr.sin_port = htons(0);
+            if (bind(server_socket, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
+                log_error("Failed to bind to any port: %s", strerror(errno));
+                sock_close(server_socket);
+                server_socket = -1;
+                return NULL;
+            }
+        } else {
+            sock_close(server_socket);
+            server_socket = -1;
+            return NULL;
+        }
     }
 
     /* If port was 0, get the actual assigned port */
