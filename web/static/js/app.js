@@ -637,10 +637,8 @@ function initEventListeners() {
 
 async function init() {
     initEventListeners();
-    await loadFavorites();
-    await loadVideos();
 
-    /* Auto-open settings if URL has #settings */
+    /* Open settings immediately if URL has #settings (don't wait for data) */
     if (window.location.hash === '#settings') {
         openSettings();
     }
@@ -653,6 +651,9 @@ async function init() {
             closeSettings();
         }
     });
+
+    await loadFavorites();
+    await loadVideos();
 }
 
 /* ===== Settings ===== */
