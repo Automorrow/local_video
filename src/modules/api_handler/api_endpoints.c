@@ -596,14 +596,8 @@ lv_error_t api_browse_directories(int client_fd, const char *query)
         /* Convert to wide char */
         MultiByteToWideChar(CP_UTF8, 0, search_utf8, -1, search_path, 1024);
 
-        HANDLE hFind = FindFirstFileExW(
-            search_path,
-            FindExInfoBasic,        /* No alternate file name */
-            &find_data,
-            FindExSearchLimitToDirectories,  /* Only directories */
-            NULL,
-            0
-        );
+        HANDLE hFind = FindFirstFileW(search_path, &find_data);
+        int dir_count = 0;
         if (hFind != INVALID_HANDLE_VALUE) {
             do {
                 if (wcscmp(find_data.cFileName, L".") == 0 ||
@@ -629,6 +623,8 @@ lv_error_t api_browse_directories(int client_fd, const char *query)
                 api_buffer_append_str(&buf, "\",\"path\":\"");
                 api_buffer_append_json_str(&buf, full_path);
                 api_buffer_append_str(&buf, "\"}");
+                dir_count++;
+                if (dir_count >= 500) break;  /* Limit to prevent huge responses */
             } while (FindNextFileW(hFind, &find_data));
             FindClose(hFind);
         }
