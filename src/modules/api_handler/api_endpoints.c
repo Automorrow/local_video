@@ -8,6 +8,15 @@
 #include <stdlib.h>
 #include <string.h>
 #include <inttypes.h>
+#include <strings.h>
+
+#ifdef _WIN32
+#define STRCASECMP _stricmp
+#else
+#define STRCASECMP strcasecmp
+#include <dirent.h>
+#include <sys/stat.h>
+#endif
 
 static int video_list_callback(const VideoInfo *video, void *user_data)
 {
@@ -277,12 +286,14 @@ lv_error_t api_update_config(int client_fd, const char *body)
 }
 
 /*
- * Resolve a directory by its name using the video database.
- * POST body: JSON array with directory name as first element,
- *            optionally followed by child directory names for verification.
- *            e.g. ["431960", "some_subfolder"]
- * Returns the full parent path, e.g. "E:\\SteamLibrary\\steamapps\\workshop\\content\\431960"
+ * Resolve a directory by its name.
+ * First tries the video database, then falls back to filesystem search.
+ * POST body: JSON array, e.g. ["431960"]
+ * Returns the full path, e.g. "E:\\SteamLibrary\\...\\431960"
  */
+static void resolve_search_recursive(const char *base, const char *target,
+    char *result, size_t result_size, int depth, int max_depth);
+
 lv_error_t api_resolve_dir(int client_fd, const char *body)
 {
     if (!body || body[0] != '[') {
@@ -292,7 +303,7 @@ lv_error_t api_resolve_dir(int client_fd, const char *body)
 
     /* Parse first directory name from JSON array */
     char dir_name[256] = {0};
-    const char *p = body + 1; /* skip '[' */
+    const char *p = body + 1;
     while (*p && *p != ']' && *p != ',') {
         if (*p == '"') {
             p++;
@@ -312,37 +323,111 @@ lv_error_t api_resolve_dir(int client_fd, const char *body)
             "{\"success\":false,\"error\":\"Empty directory name\"}", 400);
     }
 
-    /* Search database for a video path containing this directory name */
+    char result_path[1024] = {0};
+
+    /* Strategy 1: Search database */
     char video_path[512] = {0};
-    lv_error_t db_err = db_manager_video_search_by_path_substr(dir_name, video_path, sizeof(video_path));
-
-    response_buffer_t buf;
-    api_buffer_init(&buf);
-
-    if (db_err == LV_OK && video_path[0]) {
-        /* Extract the directory path: find dir_name in video_path,
-         * then take everything up to and including dir_name */
-        char result_path[1024] = {0};
+    if (db_manager_video_search_by_path_substr(dir_name, video_path, sizeof(video_path)) == LV_OK && video_path[0]) {
         const char *sep = strstr(video_path, dir_name);
         if (sep) {
             size_t prefix_len = (size_t)(sep - video_path) + strlen(dir_name);
             if (prefix_len >= sizeof(result_path)) prefix_len = sizeof(result_path) - 1;
             memcpy(result_path, video_path, prefix_len);
-            result_path[prefix_len] = '\0';
-        } else {
-            strncpy(result_path, video_path, sizeof(result_path) - 1);
         }
+    }
 
+    /* Strategy 2: Search filesystem on all drives */
+    if (!result_path[0]) {
+#ifdef _WIN32
+        DWORD drives = GetLogicalDrives();
+        for (char drive = 'A'; drive <= 'Z' && !result_path[0]; drive++) {
+            if (!(drives & (1 << (drive - 'A')))) continue;
+            UINT type = GetDriveTypeA((char[]){drive, ':', '\\', 0});
+            if (type != DRIVE_FIXED && type != DRIVE_REMOVABLE &&
+                type != DRIVE_REMOTE && type != DRIVE_RAMDISK) continue;
+            /* Recursively search X:\ for a directory named dir_name (max depth 8) */
+            char search_root[4] = {drive, ':', '\\', 0};
+            resolve_search_recursive(search_root, dir_name, result_path, sizeof(result_path), 0, 8);
+        }
+#else
+        resolve_search_recursive("/", dir_name, result_path, sizeof(result_path), 0, 8);
+#endif
+    }
+
+    response_buffer_t buf;
+    api_buffer_init(&buf);
+    if (result_path[0]) {
         api_buffer_append_str(&buf, "{\"success\":true,\"path\":\"");
         api_buffer_append_json_str(&buf, result_path);
         api_buffer_append_str(&buf, "\"}");
     } else {
-        api_buffer_append_str(&buf, "{\"success\":false,\"error\":\"Directory not found in database. Select a folder that contains video files.\"}");
+        api_buffer_append_str(&buf, "{\"success\":false,\"error\":\"Directory not found\"}");
     }
-
     lv_error_t err = api_send_json_response(client_fd, buf.data, 200);
     api_buffer_free(&buf);
     return err;
+}
+
+/* Recursively search for a directory by name (platform-independent) */
+static void resolve_search_recursive(const char *base, const char *target,
+    char *result, size_t result_size, int depth, int max_depth)
+{
+    if (result[0] || depth > max_depth) return;
+
+#ifdef _WIN32
+    WIN32_FIND_DATAW find_data;
+    WCHAR search_path[1024];
+    char search_utf8[1024];
+    snprintf(search_utf8, sizeof(search_utf8), "%s\\*", base);
+    MultiByteToWideChar(CP_UTF8, 0, search_utf8, -1, search_path, 1024);
+
+    HANDLE hFind = FindFirstFileExW(search_path, FindExInfoBasic,
+        &find_data, FindExSearchLimitToDirectories, NULL, 0);
+    if (hFind == INVALID_HANDLE_VALUE) return;
+
+    do {
+        if (wcscmp(find_data.cFileName, L".") == 0 || wcscmp(find_data.cFileName, L"..") == 0) continue;
+        if (find_data.dwFileAttributes & FILE_ATTRIBUTE_HIDDEN) continue;
+        if (!(find_data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)) continue;
+
+        char utf8_name[256];
+        WideCharToMultiByte(CP_UTF8, 0, find_data.cFileName, -1, utf8_name, sizeof(utf8_name), NULL, NULL);
+
+        /* Check if this directory matches the target name */
+        if (STRCASECMP(utf8_name, target) == 0) {
+            snprintf(result, result_size, "%s\\%s", base, utf8_name);
+            FindClose(hFind);
+            return;
+        }
+
+        /* Recurse into subdirectories */
+        char child_path[1024];
+        snprintf(child_path, sizeof(child_path), "%s\\%s", base, utf8_name);
+        resolve_search_recursive(child_path, target, result, result_size, depth + 1, max_depth);
+        if (result[0]) { FindClose(hFind); return; }
+    } while (FindNextFileW(hFind, &find_data));
+    FindClose(hFind);
+#else
+    DIR *dir = opendir(base);
+    if (!dir) return;
+    struct dirent *entry;
+    while ((entry = readdir(dir)) != NULL) {
+        if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) continue;
+        char child_path[1024];
+        snprintf(child_path, sizeof(child_path), "%s/%s", base, entry->d_name);
+        struct stat st;
+        if (stat(child_path, &st) != 0 || !S_ISDIR(st.st_mode)) continue;
+
+        if (strcmp(entry->d_name, target) == 0) {
+            snprintf(result, result_size, "%s", child_path);
+            closedir(dir);
+            return;
+        }
+        resolve_search_recursive(child_path, target, result, result_size, depth + 1, max_depth);
+        if (result[0]) { closedir(dir); return; }
+    }
+    closedir(dir);
+#endif
 }
 
 #ifdef _WIN32
@@ -452,9 +537,6 @@ lv_error_t api_browse_directories(int client_fd, const char *query)
 }
 
 #else /* POSIX */
-
-#include <dirent.h>
-#include <sys/stat.h>
 
 lv_error_t api_browse_directories(int client_fd, const char *query)
 {
