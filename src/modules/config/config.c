@@ -1,6 +1,7 @@
 #include "config.h"
 #include "../../shared/module/module.h"
 #include "../../shared/log/log.h"
+#include "../../include/platform.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -161,6 +162,49 @@ static void config_init(void)
 static void config_exit(void)
 {
     log_info("Config module exited");
+}
+
+#include <limits.h>
+#ifndef PATH_MAX
+#define PATH_MAX 4096
+#endif
+
+int config_path_allowed(const char *path)
+{
+    if (!path || path[0] == '\0') return 0;
+    if (!scan_dir_buf[0]) return 0;
+
+    char base_norm[PATH_MAX] = {0};
+    char path_norm[PATH_MAX] = {0};
+
+#ifdef _WIN32
+    if (GetFullPathNameA(scan_dir_buf, sizeof(base_norm), base_norm, NULL) == 0) return 0;
+    if (GetFullPathNameA(path, sizeof(path_norm), path_norm, NULL) == 0) return 0;
+#else
+    if (!realpath(scan_dir_buf, base_norm)) return 0;
+    if (!realpath(path, path_norm)) return 0;
+#endif
+
+    size_t base_len = strlen(base_norm);
+    size_t path_len = strlen(path_norm);
+
+    while (base_len > 0 && (base_norm[base_len - 1] == '/' || base_norm[base_len - 1] == '\\')) {
+        base_norm[--base_len] = '\0';
+    }
+    while (path_len > 0 && (path_norm[path_len - 1] == '/' || path_norm[path_len - 1] == '\\')) {
+        path_norm[--path_len] = '\0';
+    }
+
+#ifdef _WIN32
+    if (_strnicmp(path_norm, base_norm, base_len) != 0) return 0;
+#else
+    if (strncmp(path_norm, base_norm, base_len) != 0) return 0;
+#endif
+
+    if (path_len == base_len) return 1;
+    char next = path_norm[base_len];
+    if (next == '/' || next == '\\') return 1;
+    return 0;
 }
 
 MODULE_INIT(config_init, "config");

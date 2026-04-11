@@ -85,7 +85,7 @@ lv_error_t api_send_json_response(int client_fd, const char *json, int status_co
                           "Content-Type: application/json\r\n"
                           "Content-Length: %zu\r\n"
                           "Connection: close\r\n"
-                          "Access-Control-Allow-Origin: *\r\n"
+                          "Access-Control-Allow-Origin: http://localhost\r\n"
                           "\r\n",
                           status_code,
                           resp.reason,

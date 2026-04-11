@@ -34,6 +34,7 @@ jobs:
       run: |
         mkdir -p dist
         cp build/bin/local_video dist/
+        cp -r web dist/
         echo "## ⚖️ 法律免责声明" > dist/免责声明.txt
         echo "" >> dist/免责声明.txt
         echo "本项目仅供教育和合法用途。用户须自行承担遵守相关法律法规的责任。作者不对任何滥用或非法使用行为承担责任。" >> dist/免责声明.txt
@@ -76,7 +77,9 @@ jobs:
       run: |
         export PATH="/mingw64/bin:$PATH"
         cd build
-        echo "=== Running unit tests ==="
+        echo "=== Running CTest ==="
+        ctest --output-on-failure || true
+        echo "=== Running unit tests directly ==="
         failed=0
         for test in bin/test_module bin/test_list bin/test_notifier bin/test_log bin/test_thread bin/test_json bin/test_db bin/test_video_scanner; do
           if [ -f "$test" ]; then

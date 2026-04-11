@@ -15,7 +15,8 @@
         <header>
             <h1>LocalVideoServer</h1>
             <div class="controls">
-                <input type="text" id="searchInput" placeholder="Search videos...">
+                <label for="searchInput" class="visually-hidden">Search videos</label>
+                <input type="text" id="searchInput" placeholder="Search videos..." aria-label="Search videos">
                 <button id="searchBtn">Search</button>
                 <button id="randomBtn">Random</button>
                 <button id="historyBtn">History</button>
@@ -35,14 +36,14 @@
             <div id="emptyMessage" class="empty" style="display: none;">No videos found</div>
         </main>
         
-        <div id="videoModal" class="modal">
+        <div id="videoModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="videoModalTitle">
             <div class="modal-content">
-                <span class="close">&times;</span>
+                <button type="button" class="close" aria-label="Close">&times;</button>
                 <div class="video-container">
-                    <video id="videoPlayer" controls></video>
+                    <video id="videoPlayer" controls aria-label="Video player"></video>
                 </div>
                 <div class="video-info">
-                    <h2 id="videoTitle"></h2>
+                    <h2 id="videoModalTitle"></h2>
                     <p id="videoPath"></p>
                     <div class="video-actions">
                         <button id="toggleFavoriteBtn">Add to Favorites</button>
@@ -51,40 +52,40 @@
                 </div>
             </div>
         </div>
-        
-        <div id="historyModal" class="modal">
+
+        <div id="historyModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="historyModalTitle">
             <div class="modal-content">
-                <span class="close">&times;</span>
-                <h2>Playback History</h2>
+                <button type="button" class="close" aria-label="Close">&times;</button>
+                <h2 id="historyModalTitle">Playback History</h2>
                 <div id="historyList"></div>
                 <button id="clearHistoryBtn" class="danger">Clear History</button>
             </div>
         </div>
-        
-        <div id="favoritesModal" class="modal">
+
+        <div id="favoritesModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="favoritesModalTitle">
             <div class="modal-content">
-                <span class="close">&times;</span>
-                <h2>Favorites</h2>
+                <button type="button" class="close" aria-label="Close">&times;</button>
+                <h2 id="favoritesModalTitle">Favorites</h2>
                 <div id="favoritesList"></div>
             </div>
         </div>
-        
-        <div id="blacklistModal" class="modal">
+
+        <div id="blacklistModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="blacklistModalTitle">
             <div class="modal-content">
-                <span class="close">&times;</span>
-                <h2>Blacklist</h2>
+                <button type="button" class="close" aria-label="Close">&times;</button>
+                <h2 id="blacklistModalTitle">Blacklist</h2>
                 <div class="blacklist-input">
-                    <input type="text" id="blacklistInput" placeholder="Enter directory path...">
+                    <input type="text" id="blacklistInput" placeholder="Enter directory path..." aria-label="Directory path">
                     <button id="addBlacklistBtn">Add</button>
                 </div>
                 <div id="blacklistList"></div>
             </div>
         </div>
 
-        <div id="settingsModal" class="modal">
+        <div id="settingsModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="settingsModalTitle">
             <div class="modal-content">
-                <span class="close">&times;</span>
-                <h2>Settings</h2>
+                <button type="button" class="close" aria-label="Close">&times;</button>
+                <h2 id="settingsModalTitle">Settings</h2>
                 <div class="settings-form">
                     <div class="settings-group">
                         <label for="settingsPort">HTTP Port</label>
@@ -109,9 +110,9 @@
             </div>
         </div>
         
-        <div id="resumeModal" class="modal">
+        <div id="resumeModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="resumeModalTitle">
             <div class="modal-content resume-content">
-                <h2>Resume playback?</h2>
+                <h2 id="resumeModalTitle">Resume playback?</h2>
                 <p id="resumeVideoTitle"></p>
                 <p id="resumePosition"></p>
                 <div class="resume-buttons">

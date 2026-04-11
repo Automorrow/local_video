@@ -5,6 +5,23 @@
 #include <stdlib.h>
 #include <string.h>
 
+#ifdef _WIN32
+static void set_recv_timeout(int fd, int seconds)
+{
+    DWORD timeout = seconds * 1000;
+    setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, (const char *)&timeout, sizeof(timeout));
+}
+#else
+#include <sys/time.h>
+static void set_recv_timeout(int fd, int seconds)
+{
+    struct timeval tv;
+    tv.tv_sec = seconds;
+    tv.tv_usec = 0;
+    setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+}
+#endif
+
 static int read_line(int fd, char *buffer, size_t max_len)
 {
     size_t pos = 0;
@@ -148,6 +165,8 @@ lv_error_t http_request_parse(int client_fd, HttpRequest *req)
     req->range_start = -1;
     req->range_end = -1;
     req->content_length = -1;
+
+    set_recv_timeout(client_fd, 30);
 
     char line[1024];
 

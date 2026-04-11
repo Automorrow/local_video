@@ -1,1 +1,1 @@
-{"name": "LocalVideoServer", "short_name": "LVS", "description": "Local video streaming server", "start_url": "/", "display": "standalone", "background_color": "#1a1a2e", "theme_color": "#e94560", "icons": []}
+{"name": "LocalVideoServer", "short_name": "LVS", "description": "Local video streaming server", "start_url": "/", "display": "standalone", "background_color": "#1a1a2e", "theme_color": "#e94560", "icons": [{"src": "/icons/icon.svg", "sizes": "any", "type": "image/svg+xml"}]}

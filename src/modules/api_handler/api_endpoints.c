@@ -24,6 +24,31 @@ static void resolve_search_recursive(const char *base, const char *target,
     int depth, int max_depth);
 static int resolve_verify_children(const char *dir_path, char children[][256], int child_count);
 
+static const char *json_find_key_colon(const char *body, const char *key)
+{
+    size_t key_len = strlen(key);
+    char pattern[64];
+    if (key_len >= sizeof(pattern) - 3) return NULL;
+    snprintf(pattern, sizeof(pattern), "\"%s\"", key);
+    const char *p = body;
+    while ((p = strstr(p, pattern)) != NULL) {
+        if (p > body) {
+            char prev = *(p - 1);
+            if (prev == '"' || (prev >= 'a' && prev <= 'z') || (prev >= 'A' && prev <= 'Z') || prev == '_' || (prev >= '0' && prev <= '9')) {
+                p += 1;
+                continue;
+            }
+        }
+        const char *q = p + strlen(pattern);
+        while (*q == ' ' || *q == '\t' || *q == '\n' || *q == '\r') q++;
+        if (*q == ':') {
+            return q;
+        }
+        p += 1;
+    }
+    return NULL;
+}
+
 static int video_list_callback(const VideoInfo *video, void *user_data)
 {
     response_buffer_t *buf = (response_buffer_t *)user_data;
@@ -225,43 +250,37 @@ lv_error_t api_update_config(int client_fd, const char *body)
     char dir_str[512] = {0};
 
     /* Extract "port" field */
-    const char *port_key = strstr(body, "\"port\"");
-    if (port_key) {
-        const char *colon = strchr(port_key + 6, ':');
-        if (colon) {
-            int i = 0;
-            const char *p = colon + 1;
-            while (*p && *p != ',' && *p != '}' && i < 15) {
-                port_str[i++] = *p++;
-            }
-            port_str[i] = '\0';
+    const char *port_colon = json_find_key_colon(body, "port");
+    if (port_colon) {
+        int i = 0;
+        const char *p = port_colon + 1;
+        while (*p && *p != ',' && *p != '}' && i < 15) {
+            port_str[i++] = *p++;
         }
+        port_str[i] = '\0';
     }
 
     /* Extract "scan_directory" field */
-    const char *dir_key = strstr(body, "\"scan_directory\"");
-    if (dir_key) {
-        const char *colon = strchr(dir_key + 16, ':');
-        if (colon) {
-            const char *start = strchr(colon, '"');
-            if (start) {
-                start++;
-                const char *end = strchr(start, '"');
-                if (end) {
-                    size_t len = (size_t)(end - start);
-                    if (len >= sizeof(dir_str)) len = sizeof(dir_str) - 1;
-                    /* JSON unescape: \\ -> \, \" -> ", \/ -> / */
-                    size_t j = 0;
-                    for (size_t i = 0; i < len && j < sizeof(dir_str) - 1; i++) {
-                        if (start[i] == '\\' && i + 1 < len) {
-                            i++;
-                            dir_str[j++] = start[i];
-                        } else {
-                            dir_str[j++] = start[i];
-                        }
+    const char *dir_colon = json_find_key_colon(body, "scan_directory");
+    if (dir_colon) {
+        const char *start = strchr(dir_colon, '"');
+        if (start) {
+            start++;
+            const char *end = strchr(start, '"');
+            if (end) {
+                size_t len = (size_t)(end - start);
+                if (len >= sizeof(dir_str)) len = sizeof(dir_str) - 1;
+                /* JSON unescape: \\ -> \, \" -> ", \/ -> / */
+                size_t j = 0;
+                for (size_t i = 0; i < len && j < sizeof(dir_str) - 1; i++) {
+                    if (start[i] == '\\' && i + 1 < len) {
+                        i++;
+                        dir_str[j++] = start[i];
+                    } else {
+                        dir_str[j++] = start[i];
                     }
-                    dir_str[j] = '\0';
                 }
+                dir_str[j] = '\0';
             }
         }
     }
@@ -313,20 +332,17 @@ lv_error_t api_resolve_dir(int client_fd, const char *body)
 
     /* Parse "name" field */
     char dir_name[256] = {0};
-    const char *name_key = strstr(body, "\"name\"");
-    if (name_key) {
-        const char *colon = strchr(name_key + 5, ':');
-        if (colon) {
-            const char *start = strchr(colon, '"');
-            if (start) {
-                start++;
-                const char *end = strchr(start, '"');
-                if (end) {
-                    size_t len = (size_t)(end - start);
-                    if (len >= sizeof(dir_name)) len = sizeof(dir_name) - 1;
-                    memcpy(dir_name, start, len);
-                    dir_name[len] = '\0';
-                }
+    const char *name_colon = json_find_key_colon(body, "name");
+    if (name_colon) {
+        const char *start = strchr(name_colon, '"');
+        if (start) {
+            start++;
+            const char *end = strchr(start, '"');
+            if (end) {
+                size_t len = (size_t)(end - start);
+                if (len >= sizeof(dir_name)) len = sizeof(dir_name) - 1;
+                memcpy(dir_name, start, len);
+                dir_name[len] = '\0';
             }
         }
     }
@@ -334,9 +350,9 @@ lv_error_t api_resolve_dir(int client_fd, const char *body)
     /* Parse "children" array */
     char children[32][256];
     int child_count = 0;
-    const char *children_key = strstr(body, "\"children\"");
-    if (children_key) {
-        const char *arr_start = strchr(children_key, '[');
+    const char *children_colon = json_find_key_colon(body, "children");
+    if (children_colon) {
+        const char *arr_start = strchr(children_colon, '[');
         if (arr_start) {
             const char *q = arr_start + 1;
             while (*q && *q != ']' && child_count < 32) {
@@ -363,6 +379,7 @@ lv_error_t api_resolve_dir(int client_fd, const char *body)
     }
 
     char result_path[1024] = {0};
+    const lv_config_t *cfg = config_get();
 
     /* Strategy 1: Search database */
     char video_path[512] = {0};
@@ -372,24 +389,19 @@ lv_error_t api_resolve_dir(int client_fd, const char *body)
             size_t prefix_len = (size_t)(sep - video_path) + strlen(dir_name);
             if (prefix_len >= sizeof(result_path)) prefix_len = sizeof(result_path) - 1;
             memcpy(result_path, video_path, prefix_len);
+            if (!config_path_allowed(result_path)) {
+                result_path[0] = '\0';
+            }
         }
     }
 
-    /* Strategy 2: Search filesystem, verify with children */
-    if (!result_path[0]) {
+    /* Strategy 2: Search filesystem within scan_directory, verify with children */
+    if (!result_path[0] && cfg->scan_directory && cfg->scan_directory[0]) {
 #ifdef _WIN32
-        DWORD drives = GetLogicalDrives();
-        for (char drive = 'A'; drive <= 'Z' && !result_path[0]; drive++) {
-            if (!(drives & (1 << (drive - 'A')))) continue;
-            UINT type = GetDriveTypeA((char[]){drive, ':', '\\', 0});
-            if (type != DRIVE_FIXED && type != DRIVE_REMOVABLE &&
-                type != DRIVE_REMOTE && type != DRIVE_RAMDISK) continue;
-            char search_root[4] = {drive, ':', '\\', 0};
-            resolve_search_recursive(search_root, dir_name, result_path, sizeof(result_path),
-                children, child_count, 0, 8);
-        }
+        resolve_search_recursive(cfg->scan_directory, dir_name, result_path, sizeof(result_path),
+            children, child_count, 0, 8);
 #else
-        resolve_search_recursive("/", dir_name, result_path, sizeof(result_path),
+        resolve_search_recursive(cfg->scan_directory, dir_name, result_path, sizeof(result_path),
             children, child_count, 0, 8);
 #endif
     }
@@ -541,6 +553,7 @@ static int resolve_verify_children(const char *dir_path, char children[][256], i
 lv_error_t api_browse_directories(int client_fd, const char *query)
 {
     char path_buf[512] = {0};
+    const lv_config_t *cfg = config_get();
 
     /* Extract path from query parameter */
     if (query) {
@@ -561,6 +574,17 @@ lv_error_t api_browse_directories(int client_fd, const char *query)
                 }
             }
         }
+    }
+
+    if (path_buf[0] == '\0') {
+        if (cfg->scan_directory && cfg->scan_directory[0]) {
+            strncpy(path_buf, cfg->scan_directory, sizeof(path_buf) - 1);
+            path_buf[sizeof(path_buf) - 1] = '\0';
+        }
+    }
+
+    if (!config_path_allowed(path_buf)) {
+        return api_send_json_response(client_fd, "{\"success\":false,\"error\":\"Access denied\"}", 403);
     }
 
     response_buffer_t buf;
@@ -649,7 +673,8 @@ lv_error_t api_browse_directories(int client_fd, const char *query)
 
 lv_error_t api_browse_directories(int client_fd, const char *query)
 {
-    char path_buf[512] = "/";
+    char path_buf[512] = {0};
+    const lv_config_t *cfg = config_get();
 
     if (query) {
         const char *path_key = strstr(query, "path=");
@@ -668,6 +693,20 @@ lv_error_t api_browse_directories(int client_fd, const char *query)
                 }
             }
         }
+    }
+
+    if (path_buf[0] == '\0') {
+        if (cfg->scan_directory && cfg->scan_directory[0]) {
+            strncpy(path_buf, cfg->scan_directory, sizeof(path_buf) - 1);
+            path_buf[sizeof(path_buf) - 1] = '\0';
+        } else {
+            path_buf[0] = '/';
+            path_buf[1] = '\0';
+        }
+    }
+
+    if (!config_path_allowed(path_buf)) {
+        return api_send_json_response(client_fd, "{\"success\":false,\"error\":\"Access denied\"}", 403);
     }
 
     response_buffer_t buf;
@@ -856,18 +895,20 @@ lv_error_t api_add_blacklist(int client_fd, const char *body)
     lv_error_t err;
 
     if (body) {
-        const char *path_start = strstr(body, "\"path\":\"");
-        if (path_start) {
-            const char *path_end;
-            size_t len;
-
-            path_start += 8;
-            path_end = strchr(path_start, '"');
-            if (path_end) {
-                len = (size_t)(path_end - path_start);
-                if (len >= sizeof(path)) len = sizeof(path) - 1;
-                memcpy(path, path_start, len);
-                path[len] = '\0';
+        const char *path_colon = json_find_key_colon(body, "path");
+        if (path_colon) {
+            const char *path_start = strchr(path_colon, '"');
+            if (path_start) {
+                const char *path_end;
+                size_t len;
+                path_start++;
+                path_end = strchr(path_start, '"');
+                if (path_end) {
+                    len = (size_t)(path_end - path_start);
+                    if (len >= sizeof(path)) len = sizeof(path) - 1;
+                    memcpy(path, path_start, len);
+                    path[len] = '\0';
+                }
             }
         }
     }

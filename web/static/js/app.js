@@ -13,7 +13,11 @@ const state = {
     pendingVideo: null,
     currentPage: 0,
     allLoaded: false,
-    currentSearch: ''
+    currentSearch: '',
+    loadSerial: 0,
+    togglingFavorite: new Set(),
+    savingSettings: false,
+    addingBlacklist: false
 };
 
 const elements = {
@@ -57,6 +61,15 @@ const elements = {
     settingsSaveBtn: document.getElementById('settingsSaveBtn'),
     settingsStatus: document.getElementById('settingsStatus')
 };
+
+function escapeHtml(str) {
+    if (typeof str !== 'string') return String(str ?? '');
+    return str.replace(/&/g, '&amp;')
+              .replace(/</g, '&lt;')
+              .replace(/>/g, '&gt;')
+              .replace(/"/g, '&quot;')
+              .replace(/'/g, '&#39;');
+}
 
 function showToast(message, type = 'info') {
     const toast = document.createElement('div');
@@ -109,11 +122,14 @@ function showVideos() {
 async function fetchJSON(url, options = {}) {
     try {
         const response = await fetch(url, options);
-        if (!response.ok) throw new Error('Network error');
+        if (!response.ok) {
+            const text = await response.text().catch(() => '');
+            return { error: true, status: response.status, message: text || 'HTTP error' };
+        }
         return await response.json();
     } catch (error) {
         console.error('Fetch error:', error);
-        return null;
+        return { error: true, status: 0, message: error.message || 'Network error' };
     }
 }
 
@@ -124,12 +140,14 @@ async function loadVideos(searchQuery = '', append = false) {
         state.allLoaded = false;
         state.currentSearch = searchQuery;
         state.videos = [];
+        state.loadSerial++;
         const sentinel = document.getElementById('scrollSentinel');
         if (sentinel && state._sentinelObserver) {
             state._sentinelObserver.unobserve(sentinel);
         }
     }
 
+    const mySerial = state.loadSerial;
     const params = [];
     params.push(`limit=${PAGE_SIZE}`);
     params.push(`offset=${state.currentPage * PAGE_SIZE}`);
@@ -137,6 +155,8 @@ async function loadVideos(searchQuery = '', append = false) {
 
     const url = API_BASE + '/videos?' + params.join('&');
     const data = await fetchJSON(url);
+
+    if (mySerial !== state.loadSerial) return;
 
     if (data && Array.isArray(data)) {
         if (data.length < PAGE_SIZE) state.allLoaded = true;
@@ -200,18 +220,20 @@ async function getBlacklist() {
 
 async function addBlacklist(path) {
     if (!path) return;
+    state.addingBlacklist = true;
     const result = await fetchJSON(API_BASE + '/blacklist', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ path: path })
     });
+    state.addingBlacklist = false;
     if (result && result.success) {
         getBlacklist();
         elements.blacklistInput.value = '';
         loadVideos();
         showToast('Directory added to blacklist', 'success');
     } else {
-        showToast(result?.error || 'Failed to add to blacklist', 'error');
+        showToast(result?.error || result?.message || 'Failed to add to blacklist', 'error');
     }
 }
 
@@ -232,7 +254,7 @@ function renderBlacklist(blacklist) {
     elements.blacklistList.innerHTML = blacklist.map(item => `
         <div class="blacklist-item" data-id="${item.id}">
             <div class="blacklist-info">
-                <h4>${item.path}</h4>
+                <h4>${escapeHtml(item.path)}</h4>
                 <p>Added: ${new Date(item.created_at * 1000).toLocaleString()}</p>
             </div>
             <button class="remove-btn" data-id="${item.id}">Remove</button>
@@ -263,24 +285,51 @@ async function removeFromHistory(historyId) {
     showToast('History item removed', 'success');
 }
 
+function updateVideoCardFavorite(videoId, isFavorite) {
+    const card = document.querySelector(`.video-card[data-id="${videoId}"] .video-thumbnail`);
+    if (!card) return;
+    let badge = card.querySelector('.favorite-badge');
+    if (isFavorite) {
+        if (!badge) {
+            badge = document.createElement('span');
+            badge.className = 'favorite-badge';
+            badge.textContent = '❤️';
+            card.appendChild(badge);
+        }
+    } else if (badge) {
+        badge.remove();
+    }
+}
+
 async function toggleFavorite(videoId) {
-    if (state.favorites.has(videoId)) {
-        await fetchJSON(API_BASE + '/favorites/' + videoId, {
-            method: 'DELETE'
-        });
-        state.favorites.delete(videoId);
-        showToast('Removed from favorites', 'info');
+    if (state.togglingFavorite.has(videoId)) return;
+    state.togglingFavorite.add(videoId);
+    const isFavorite = state.favorites.has(videoId);
+    let result;
+    if (isFavorite) {
+        result = await fetchJSON(API_BASE + '/favorites/' + videoId, { method: 'DELETE' });
+        if (result && !result.error) {
+            state.favorites.delete(videoId);
+            showToast('Removed from favorites', 'info');
+        }
     } else {
-        await fetchJSON(API_BASE + '/favorites', {
+        result = await fetchJSON(API_BASE + '/favorites', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ video_id: videoId })
         });
-        state.favorites.add(videoId);
-        showToast('Added to favorites', 'success');
+        if (result && !result.error) {
+            state.favorites.add(videoId);
+            showToast('Added to favorites', 'success');
+        }
     }
-    updateFavoriteButton();
-    renderVideos(state.videos);
+    state.togglingFavorite.delete(videoId);
+    if (result && result.error) {
+        showToast(result.message || 'Failed to update favorites', 'error');
+    } else {
+        updateFavoriteButton();
+        updateVideoCardFavorite(videoId, !isFavorite);
+    }
 }
 
 async function clearHistory() {
@@ -288,6 +337,8 @@ async function clearHistory() {
     getHistory();
     showToast('History cleared', 'success');
 }
+
+let _thumbnailObserver = null;
 
 function renderVideos(videos, append) {
     hideLoading();
@@ -308,8 +359,8 @@ function renderVideos(videos, append) {
                 ${state.favorites.has(video.id) ? '<span class="favorite-badge">❤️</span>' : ''}
             </div>
             <div class="video-info-card">
-                    <div class="video-title" title="${video.title}">${video.title}</div>
-                    <div class="video-category">${video.category || ''}</div>
+                    <div class="video-title" title="${escapeHtml(video.title)}">${escapeHtml(video.title)}</div>
+                    <div class="video-category">${escapeHtml(video.category || '')}</div>
                     <div class="video-size">${formatSize(video.size)}</div>
                 </div>
         </div>
@@ -324,17 +375,19 @@ function renderVideos(videos, append) {
     /* Lazy load new thumbnails */
     const lazyImages = elements.videoList.querySelectorAll('img[data-src]');
     if ('IntersectionObserver' in window) {
-        const observer = new IntersectionObserver((entries) => {
-            entries.forEach(entry => {
-                if (entry.isIntersecting) {
-                    const img = entry.target;
-                    img.src = img.dataset.src;
-                    img.removeAttribute('data-src');
-                    observer.unobserve(img);
-                }
-            });
-        }, { rootMargin: '200px' });
-        lazyImages.forEach(img => observer.observe(img));
+        if (!_thumbnailObserver) {
+            _thumbnailObserver = new IntersectionObserver((entries) => {
+                entries.forEach(entry => {
+                    if (entry.isIntersecting) {
+                        const img = entry.target;
+                        img.src = img.dataset.src;
+                        img.removeAttribute('data-src');
+                        _thumbnailObserver.unobserve(img);
+                    }
+                });
+            }, { rootMargin: '200px' });
+        }
+        lazyImages.forEach(img => _thumbnailObserver.observe(img));
     } else {
         lazyImages.forEach(img => {
             img.src = img.dataset.src;
@@ -382,10 +435,10 @@ function renderHistory(history) {
         return;
     }
     elements.historyList.innerHTML = history.map(item => `
-        <div class="history-item" data-id="${item.id}" data-video-id="${item.video_id}" data-path="${item.path}" data-position="${item.position || 0}">
+        <div class="history-item" data-id="${item.id}" data-video-id="${item.video_id}" data-path="${escapeHtml(item.path)}" data-position="${item.position || 0}">
             <div class="history-info">
-                <h4>${item.title || 'Unknown'}</h4>
-                <p>${item.path}</p>
+                <h4>${escapeHtml(item.title || 'Unknown')}</h4>
+                <p>${escapeHtml(item.path)}</p>
                 <span class="position">Position: ${formatPosition(item.position)}</span>
             </div>
             <button class="remove-btn" data-id="${item.id}">Remove</button>
@@ -422,10 +475,10 @@ function renderFavorites(favorites) {
         return;
     }
     elements.favoritesList.innerHTML = favorites.map(item => `
-        <div class="favorite-item" data-id="${item.video_id}" data-path="${item.path}">
+        <div class="favorite-item" data-id="${item.video_id}" data-path="${escapeHtml(item.path)}">
             <div class="favorite-info">
-                <h4>${item.title || 'Unknown'}</h4>
-                <p>${item.path}</p>
+                <h4>${escapeHtml(item.title || 'Unknown')}</h4>
+                <p>${escapeHtml(item.path)}</p>
             </div>
             <button class="remove-btn" data-id="${item.video_id}">Remove</button>
         </div>
@@ -462,21 +515,16 @@ function playVideo(video, resume = true) {
     state.currentVideo = video;
     elements.videoTitle.textContent = video.title || 'Unknown';
     elements.videoPath.textContent = video.path || '';
-    
-    elements.videoPlayer.src = '/video/' + video.id;
-    elements.videoPlayer.load();
-    elements.videoModal.classList.add('active');
-    if (!window.location.hash) history.pushState(null, '', '#video');
-    
+
     updateFavoriteButton();
     addToHistory(video.id, 0);
-    
+
     // Add error handling
     elements.videoPlayer.onerror = () => {
         showToast('视频无法播放，可能已被删除或加入黑名单', 'error');
         closeModal(elements.videoModal);
     };
-    
+
     if (resume && video.position && video.position > 0) {
         elements.videoPlayer.onloadedmetadata = () => {
             elements.videoPlayer.currentTime = video.position;
@@ -491,6 +539,11 @@ function playVideo(video, resume = true) {
             });
         };
     }
+
+    elements.videoPlayer.src = '/video/' + video.id;
+    elements.videoPlayer.load();
+    elements.videoModal.classList.add('active');
+    if (!window.location.hash) history.pushState(null, '', '#video');
 }
 
 function updateFavoriteButton() {
@@ -520,7 +573,8 @@ function closeTopModal() {
         elements.videoModal,
         elements.historyModal,
         elements.favoritesModal,
-        elements.blacklistModal
+        elements.blacklistModal,
+        elements.settingsModal
     ];
     
     for (const modal of modals) {
@@ -539,6 +593,9 @@ function closeModal(modal) {
     }
     if (modal === elements.resumeModal) {
         state.pendingVideo = null;
+    }
+    if (modal === elements.settingsModal) {
+        document.title = 'LocalVideoServer';
     }
     if (window.location.hash) {
         history.pushState(null, '', window.location.pathname + window.location.search);
@@ -581,6 +638,7 @@ function initEventListeners() {
     elements.clearHistoryBtn.addEventListener('click', clearHistory);
     
     elements.addBlacklistBtn.addEventListener('click', () => {
+        if (state.addingBlacklist) return;
         addBlacklist(elements.blacklistInput.value.trim());
     });
 
@@ -603,10 +661,13 @@ function initEventListeners() {
     });
     
     document.addEventListener('keydown', (e) => {
+        const tag = e.target.tagName;
+        const isTyping = tag === 'INPUT' || tag === 'TEXTAREA' || e.target.isContentEditable;
         if (e.key === 'Escape') {
             closeTopModal();
         }
         if (!elements.videoModal.classList.contains('active')) return;
+        if (isTyping) return;
         if (e.key === 'ArrowLeft') {
             e.preventDefault();
             elements.videoPlayer.currentTime = Math.max(0, elements.videoPlayer.currentTime - 10);
@@ -650,17 +711,23 @@ function initEventListeners() {
         playNextVideo();
     });
     
+    let pauseDebounceTimer = null;
     elements.videoPlayer.addEventListener('pause', () => {
         if (state.currentVideo) {
             const position = Math.floor(elements.videoPlayer.currentTime);
-            addToHistory(state.currentVideo.id, position);
+            if (pauseDebounceTimer) clearTimeout(pauseDebounceTimer);
+            pauseDebounceTimer = setTimeout(() => {
+                addToHistory(state.currentVideo.id, position);
+            }, 500);
         }
     });
 
     /* Settings */
     elements.settingsBtn.addEventListener('click', openSettings);
-    elements.settingsModal.querySelector('.close').addEventListener('click', closeSettings);
-    elements.settingsSaveBtn.addEventListener('click', saveSettings);
+    elements.settingsSaveBtn.addEventListener('click', () => {
+        if (state.savingSettings) return;
+        saveSettings();
+    });
 }
 
 async function init() {
@@ -723,13 +790,14 @@ async function browseDir(path) {
         return;
     }
 
+    const sep = (navigator.platform && navigator.platform.toLowerCase().includes('win')) ? '\\' : '/';
     if (path) {
         const parts = path.split(/[/\\]/).filter(Boolean);
         let breadcrumb = '<span class="dir-crumb" data-path="">Root</span>';
         let accum = '';
         for (const part of parts) {
-            accum += (accum ? '\\' : '') + part;
-            breadcrumb += ' <span class="dir-crumb-sep">›</span> <span class="dir-crumb" data-path="' + accum + '">' + part + '</span>';
+            accum += (accum ? sep : '') + part;
+            breadcrumb += ' <span class="dir-crumb-sep">›</span> <span class="dir-crumb" data-path="' + escapeHtml(accum) + '">' + escapeHtml(part) + '</span>';
         }
         elements.dirBreadcrumb.innerHTML = breadcrumb;
         elements.dirBreadcrumb.querySelectorAll('.dir-crumb').forEach(crumb => {
@@ -747,7 +815,7 @@ async function browseDir(path) {
     elements.dirList.innerHTML = dirs.map(d => {
         const icon = d.type === 'drive' ? '💾' : '📁';
         const sel = d.path === settingsSelectedDir ? ' selected' : '';
-        return '<div class="dir-item' + sel + '" data-path="' + d.path + '"><span class="dir-icon">' + icon + '</span><span class="dir-name">' + d.name + '</span></div>';
+        return '<div class="dir-item' + sel + '" data-path="' + escapeHtml(d.path) + '"><span class="dir-icon">' + icon + '</span><span class="dir-name">' + escapeHtml(d.name) + '</span></div>';
     }).join('');
 
     elements.dirList.querySelectorAll('.dir-item').forEach(item => {
@@ -764,11 +832,13 @@ async function browseDir(path) {
 }
 
 async function saveSettings() {
+    state.savingSettings = true;
     const port = parseInt(elements.settingsPort.value) || 0;
     const dir = settingsSelectedDir;
 
     if (!dir) {
         showSettingsStatus('Please select a video directory', 'error');
+        state.savingSettings = false;
         return;
     }
 
@@ -788,15 +858,16 @@ async function saveSettings() {
             const poll = async () => {
                 await loadVideos();
                 attempts++;
-                if (state.videos.length === 0 && attempts < 20) {
+                if (attempts < 20) {
                     setTimeout(poll, 1000);
                 }
             };
             poll();
         }, 500);
     } else {
-        showSettingsStatus('Failed to save settings', 'error');
+        showSettingsStatus(result?.message || 'Failed to save settings', 'error');
     }
+    state.savingSettings = false;
 }
 
 function showSettingsStatus(msg, type) {

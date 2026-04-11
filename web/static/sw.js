@@ -32,8 +32,9 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
     if (event.request.method !== 'GET') return;
 
-    if (event.request.url.startsWith('/api/') || event.request.url.startsWith('/video/') ||
-        event.request.url.startsWith('/thumbnail/')) {
+    const pathname = new URL(event.request.url).pathname;
+    if (pathname.startsWith('/api/') || pathname.startsWith('/video/') ||
+        pathname.startsWith('/thumbnail/')) {
         return;
     }
 

@@ -81,6 +81,9 @@ static void *connection_handler(void *arg)
             if (err != LV_OK) {
                 log_error("Video not found for ID: %" PRId64, video_id);
                 http_response_send_error(client_fd, 404, "Video not found");
+            } else if (!config_path_allowed(video.path)) {
+                log_error("Video path not allowed: %s", video.path);
+                http_response_send_error(client_fd, 403, "Access denied");
             } else {
                 log_info("Video path from DB: %s", video.path);
                 err = http_server_serve_video_stream(client_fd, &req, video.path);
