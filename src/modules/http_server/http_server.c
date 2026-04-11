@@ -193,10 +193,6 @@ static void *server_loop(void *arg)
 
 lv_error_t http_server_init(uint16_t port, const char *web_root_path)
 {
-    if (port == 0) {
-        return LV_ERROR_INVALID_ARG;
-    }
-
     server_port = port;
     if (web_root_path) {
         strncpy(web_root, web_root_path, sizeof(web_root) - 1);
