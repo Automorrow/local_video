@@ -168,15 +168,26 @@ lv_error_t api_get_videos(int client_fd, const char *query)
         log_info("Parsing query: %s", query);
         api_parse_query(query, search_key, sizeof(search_key), search_value, sizeof(search_value));
         log_info("Search key: '%s', value: '%s'", search_key, search_value);
-    } else if (query) {
-        api_parse_query(query, search_key, sizeof(search_key), search_value, sizeof(search_value));
     }
 
-    if (search_key[0] && search_value[0]) {
+    /* Also check for search/category params when using pagination */
+    if (!search_key[0] && query) {
+        char search_buf[256] = {0};
+        if (api_get_query_param(query, "search", search_buf, sizeof(search_buf)) == 0) {
+            snprintf(search_key, sizeof(search_key), "%s", "search");
+            snprintf(search_value, sizeof(search_value), "%s", search_buf);
+        } else if (api_get_query_param(query, "category", search_buf, sizeof(search_buf)) == 0) {
+            snprintf(search_key, sizeof(search_key), "%s", "category");
+            snprintf(search_value, sizeof(search_value), "%s", search_buf);
+        }
+    }
+
+    if ((strcmp(search_key, "search") == 0 || strcmp(search_key, "category") == 0)
+        && search_value[0]) {
         if (strcmp(search_key, "search") == 0) {
             log_info("Searching videos for: '%s'", search_value);
             db_manager_video_search(search_value, video_list_callback, &buf);
-        } else if (strcmp(search_key, "category") == 0) {
+        } else {
             log_info("Getting videos by category: '%s'", search_value);
             db_manager_video_get_by_category(search_value, video_list_callback, &buf);
         }
