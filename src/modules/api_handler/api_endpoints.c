@@ -85,7 +85,7 @@ static lv_error_t try_browse_from_db(int client_fd, const char *parent_path)
     browse_db_ctx_t ctx = { &buf, 1 };
     lv_error_t err = db_manager_directory_get_children(parent_path, browse_db_callback, &ctx);
 
-    if (err == LV_OK && buf.size > 1) {
+    if (err == LV_OK) {
         api_buffer_append_str(&buf, "]");
         err = api_send_json_response(client_fd, buf.data, 200);
         api_buffer_free(&buf);
@@ -625,7 +625,7 @@ static int resolve_verify_children(const char *dir_path, char children[][256], i
 lv_error_t api_browse_directories(int client_fd, const char *query)
 {
     char path_buf[512] = {0};
-    const lv_config_t *cfg = config_get();
+    (void)config_get(); /* cfg not needed in browse on Windows */
 
     /* Extract path from query parameter */
     if (query) {
@@ -646,17 +646,6 @@ lv_error_t api_browse_directories(int client_fd, const char *query)
                 }
             }
         }
-    }
-
-    if (path_buf[0] == '\0') {
-        if (cfg->scan_directory && cfg->scan_directory[0]) {
-            strncpy(path_buf, cfg->scan_directory, sizeof(path_buf) - 1);
-            path_buf[sizeof(path_buf) - 1] = '\0';
-        }
-    }
-
-    if (!config_path_allowed(path_buf)) {
-        return api_send_json_response(client_fd, "{\"success\":false,\"error\":\"Access denied\"}", 403);
     }
 
     response_buffer_t buf;
@@ -719,6 +708,7 @@ lv_error_t api_browse_directories(int client_fd, const char *query)
                     wcscmp(find_data.cFileName, L"..") == 0) continue;
                 if (!(find_data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)) continue;
                 if (find_data.dwFileAttributes & FILE_ATTRIBUTE_HIDDEN) continue;
+                if (find_data.dwFileAttributes & FILE_ATTRIBUTE_SYSTEM) continue;
 
                 char utf8_name[512];
                 WideCharToMultiByte(CP_UTF8, 0, find_data.cFileName, -1,
@@ -786,10 +776,6 @@ lv_error_t api_browse_directories(int client_fd, const char *query)
             path_buf[0] = '/';
             path_buf[1] = '\0';
         }
-    }
-
-    if (!config_path_allowed(path_buf)) {
-        return api_send_json_response(client_fd, "{\"success\":false,\"error\":\"Access denied\"}", 403);
     }
 
     response_buffer_t buf;

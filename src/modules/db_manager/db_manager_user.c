@@ -3,9 +3,39 @@
 
 lv_error_t db_manager_history_add(int64_t video_id, int64_t position) {
     lv_mutex_lock(&g_mutex);
+
+    /* Check the most recent history record */
+    int64_t last_video_id = -1;
+    int64_t last_id = -1;
+    const char *check_sql = "SELECT id, video_id FROM history ORDER BY played_at DESC LIMIT 1";
+    sqlite3_stmt *check_stmt = NULL;
+    int rc = sqlite3_prepare_v2(g_db, check_sql, -1, &check_stmt, NULL);
+    if (rc == SQLITE_OK) {
+        if (sqlite3_step(check_stmt) == SQLITE_ROW) {
+            last_id = sqlite3_column_int64(check_stmt, 0);
+            last_video_id = sqlite3_column_int64(check_stmt, 1);
+        }
+        sqlite3_finalize(check_stmt);
+    }
+
+    /* If the most recent record is the same video, update it instead of inserting */
+    if (last_video_id == video_id && last_id != -1) {
+        const char *update_sql = "UPDATE history SET position = ?, played_at = strftime('%s', 'now') WHERE id = ?";
+        sqlite3_stmt *update_stmt = NULL;
+        rc = sqlite3_prepare_v2(g_db, update_sql, -1, &update_stmt, NULL);
+        if (rc == SQLITE_OK) {
+            sqlite3_bind_int64(update_stmt, 1, position);
+            sqlite3_bind_int64(update_stmt, 2, last_id);
+            sqlite3_step(update_stmt);
+            sqlite3_finalize(update_stmt);
+        }
+        lv_mutex_unlock(&g_mutex);
+        return LV_OK;
+    }
+
     const char *sql = "INSERT INTO history (video_id, position) VALUES (?, ?)";
     sqlite3_stmt *stmt = NULL;
-    int rc = sqlite3_prepare_v2(g_db, sql, -1, &stmt, NULL);
+    rc = sqlite3_prepare_v2(g_db, sql, -1, &stmt, NULL);
     if (rc != SQLITE_OK) {
         log_error("Prepare error: %s", sqlite3_errmsg(g_db));
         lv_mutex_unlock(&g_mutex);

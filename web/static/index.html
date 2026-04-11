@@ -15,8 +15,11 @@
         <header>
             <h1>LocalVideoServer</h1>
             <div class="controls">
-                <label for="searchInput" class="visually-hidden">Search videos</label>
-                <input type="text" id="searchInput" placeholder="Search videos..." aria-label="Search videos">
+                <button id="mobileSearchToggle" class="mobile-search-toggle" aria-label="Search">🔍</button>
+                <div class="search-wrap" id="searchWrap">
+                    <label for="searchInput" class="visually-hidden">Search videos</label>
+                    <input type="text" id="searchInput" placeholder="Search videos..." aria-label="Search videos">
+                </div>
                 <button id="searchBtn">Search</button>
                 <button id="randomBtn">Random</button>
                 <button id="historyBtn">History</button>
@@ -62,6 +65,7 @@
 
         <div id="historyModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="historyModalTitle">
             <div class="modal-content">
+                <div class="drawer-handle" aria-hidden="true"></div>
                 <button type="button" class="close" aria-label="Close">&times;</button>
                 <h2 id="historyModalTitle">Playback History</h2>
                 <div id="historyList"></div>
@@ -71,6 +75,7 @@
 
         <div id="favoritesModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="favoritesModalTitle">
             <div class="modal-content">
+                <div class="drawer-handle" aria-hidden="true"></div>
                 <button type="button" class="close" aria-label="Close">&times;</button>
                 <h2 id="favoritesModalTitle">Favorites</h2>
                 <div id="favoritesList"></div>
@@ -79,6 +84,7 @@
 
         <div id="blacklistModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="blacklistModalTitle">
             <div class="modal-content">
+                <div class="drawer-handle" aria-hidden="true"></div>
                 <button type="button" class="close" aria-label="Close">&times;</button>
                 <h2 id="blacklistModalTitle">Blacklist</h2>
                 <div class="blacklist-input">
@@ -92,7 +98,10 @@
         <div id="settingsModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="settingsModalTitle">
             <div class="modal-content">
                 <button type="button" class="close" aria-label="Close">&times;</button>
-                <h2 id="settingsModalTitle">Settings</h2>
+                <div class="modal-header">
+                    <button type="button" class="mobile-back" aria-label="Back">&#8592;</button>
+                    <h2 id="settingsModalTitle">Settings</h2>
+                </div>
                 <div class="settings-form">
                     <div class="settings-group">
                         <label for="settingsPort">HTTP Port</label>
@@ -110,6 +119,7 @@
                         </div>
                     </div>
                     <div class="settings-actions">
+                        <button id="settingsCancelBtn" class="secondary">Cancel</button>
                         <button id="settingsSaveBtn" class="primary">Save & Rescan</button>
                     </div>
                     <div id="settingsStatus" class="settings-status"></div>
@@ -131,8 +141,17 @@
         
         <div id="toastContainer" class="toast-container"></div>
     </div>
-    
-    <script src="/js/app.js?v=3"></script>
+
+    <button id="backToTop" class="back-to-top" aria-label="Back to top">&#8593;</button>
+
+    <nav id="bottomNav" class="bottom-nav">
+        <button data-view="home" aria-label="Home">🏠<span>Home</span></button>
+        <button data-view="favorites" aria-label="Favorites">❤️<span>Favorites</span></button>
+        <button data-view="history" aria-label="History">🕐<span>History</span></button>
+        <button data-view="settings" aria-label="Settings">⚙️<span>Settings</span></button>
+    </nav>
+
+    <script type="module" src="/js/app.js?v=4"></script>
     <script>
         if ('serviceWorker' in navigator) {
             navigator.serviceWorker.register('/sw.js').catch(function() {});

@@ -1,8 +1,13 @@
-const CACHE_NAME = 'local-video-v3';
+const CACHE_NAME = 'local-video-v4';
 const PRECACHE_URLS = [
     '/',
     '/index.html',
     '/css/style.css',
+    '/js/common.js',
+    '/js/api.js',
+    '/js/modal.js',
+    '/js/player.js',
+    '/js/settings.js',
     '/js/app.js',
     '/manifest.json'
 ];
