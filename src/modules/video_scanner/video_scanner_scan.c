@@ -67,6 +67,7 @@ static lv_error_t scan_directory_incremental_ex(const char *dir_path, int *file_
     snprintf(search_path, sizeof(search_path), "%s\\*", dir_path);
 
     WIN32_FIND_DATAW find_data;
+    HANDLE hFind;
 
     /* Use wide-char for proper Unicode support */
     WCHAR wsearch_path[4096];
