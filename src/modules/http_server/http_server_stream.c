@@ -1,6 +1,7 @@
 #include "http_server_internal.h"
 #include "http_response.h"
 #include "../../shared/log/log.h"
+#include "../../include/platform.h"
 #include <errno.h>
 #include <string.h>
 
@@ -26,8 +27,8 @@ lv_error_t http_server_serve_video_stream(int client_fd,
 
     if (err == LV_OK) {
         log_info("Video served successfully");
-    } else if (errno == EPIPE || errno == ECONNRESET) {
-        log_debug("Client disconnected during video stream: %s", strerror(errno));
+    } else if (SOCKET_ERRNO == EPIPE_W || SOCKET_ERRNO == ECONNRESET_W) {
+        log_debug("Client disconnected during video stream");
     } else {
         log_error("Failed to serve video: %s", video_path);
     }

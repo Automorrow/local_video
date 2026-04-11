@@ -34,7 +34,7 @@ static lv_error_t write_all(int fd, const char *buffer, size_t len)
     while (written_total < len) {
         ssize_t written = net_write(fd, buffer + written_total, len - written_total);
         if (written < 0) {
-            log_error("net_write failed: errno=%d", errno);
+            log_error("net_write failed: errno=%d", SOCKET_ERRNO);
             return LV_ERROR_IO;
         }
         written_total += (size_t)written;

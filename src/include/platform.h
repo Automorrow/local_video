@@ -38,6 +38,9 @@
     /* Windows socket compatibility */
     #define SHUT_RDWR SD_BOTH
     #define SHUT_WR SD_SEND
+    #define SOCKET_ERRNO WSAGetLastError()
+    #define ECONNRESET_W WSAECONNRESET
+    #define EPIPE_W WSAECONNRESET  /* Windows has no SIGPIPE/EPIPE equivalent */
     
     typedef int socklen_t;
     
@@ -90,7 +93,10 @@
     /* On POSIX, read/write work for both sockets and files */
     #define net_read(fd, buf, len) read((fd), (buf), (len))
     #define net_write(fd, buf, len) write((fd), (buf), (len))
-    #define sock_close(fd) close(fd)
+    #define sock_close(fd) close((fd))
+    #define SOCKET_ERRNO errno
+    #define ECONNRESET_W ECONNRESET
+    #define EPIPE_W EPIPE
 #endif
 
 /* Platform initialization */
