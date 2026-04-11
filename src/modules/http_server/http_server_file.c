@@ -34,7 +34,11 @@ static lv_error_t write_all(int fd, const char *buffer, size_t len)
     while (written_total < len) {
         ssize_t written = net_write(fd, buffer + written_total, len - written_total);
         if (written < 0) {
-            log_error("net_write failed: errno=%d", SOCKET_ERRNO);
+            if (SOCKET_ERRNO == EPIPE_W || SOCKET_ERRNO == ECONNRESET_W) {
+                log_debug("Client disconnected (errno=%d)", SOCKET_ERRNO);
+            } else {
+                log_error("net_write failed: errno=%d", SOCKET_ERRNO);
+            }
             return LV_ERROR_IO;
         }
         written_total += (size_t)written;
