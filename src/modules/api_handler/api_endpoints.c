@@ -85,7 +85,7 @@ static lv_error_t try_browse_from_db(int client_fd, const char *parent_path)
     browse_db_ctx_t ctx = { &buf, 1 };
     lv_error_t err = db_manager_directory_get_children(parent_path, browse_db_callback, &ctx);
 
-    if (err == LV_OK) {
+    if (err == LV_OK && buf.size > 1) {
         api_buffer_append_str(&buf, "]");
         err = api_send_json_response(client_fd, buf.data, 200);
         api_buffer_free(&buf);
