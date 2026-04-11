@@ -546,3 +546,20 @@ video {
     color: #e74c3c;
     border: 1px solid rgba(231, 76, 60, 0.3);
 }
+
+/* Load More */
+.load-more-btn {
+    display: block;
+    margin: 20px auto;
+    padding: 10px 32px;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--text-muted);
+    border-radius: 6px;
+    color: var(--text-primary);
+    font-size: 14px;
+    cursor: pointer;
+}
+.load-more-btn:hover {
+    background: var(--accent);
+    border-color: var(--accent);
+}

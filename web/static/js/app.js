@@ -1,5 +1,7 @@
 const API_BASE = '/api';
 
+const PAGE_SIZE = 40;
+
 const state = {
     videos: [],
     categories: [],
@@ -8,7 +10,10 @@ const state = {
     favorites: new Set(),
     blacklist: [],
     searchTimeout: null,
-    pendingVideo: null
+    pendingVideo: null,
+    currentPage: 0,
+    allLoaded: false,
+    currentSearch: ''
 };
 
 const elements = {
@@ -111,18 +116,29 @@ async function fetchJSON(url, options = {}) {
     }
 }
 
-async function loadVideos(searchQuery = '') {
-    showLoading();
-    let url = API_BASE + '/videos';
+async function loadVideos(searchQuery = '', append = false) {
+    if (!append) {
+        showLoading();
+        state.currentPage = 0;
+        state.allLoaded = false;
+        state.currentSearch = searchQuery;
+        state.videos = [];
+    }
+
     const params = [];
+    params.push(`limit=${PAGE_SIZE}`);
+    params.push(`offset=${state.currentPage * PAGE_SIZE}`);
     if (searchQuery) params.push(`search=${encodeURIComponent(searchQuery)}`);
-    if (params.length > 0) url += '?' + params.join('&');
-    
+
+    const url = API_BASE + '/videos?' + params.join('&');
     const data = await fetchJSON(url);
+
     if (data && Array.isArray(data)) {
-        state.videos = data;
-        renderVideos(data);
-    } else {
+        if (data.length < PAGE_SIZE) state.allLoaded = true;
+        state.videos = append ? state.videos.concat(data) : data;
+        state.currentPage++;
+        renderVideos(state.videos, append);
+    } else if (!append) {
         showEmpty();
     }
 }
@@ -265,14 +281,18 @@ async function clearHistory() {
     showToast('History cleared', 'success');
 }
 
-function renderVideos(videos) {
+function renderVideos(videos, append) {
     hideLoading();
     if (!videos || videos.length === 0) {
         showEmpty();
         return;
     }
     showVideos();
-    elements.videoList.innerHTML = videos.map(video => `
+
+    /* Build HTML only for new items */
+    const startIdx = append ? (state.currentPage - 1) * PAGE_SIZE : 0;
+    const newVideos = videos.slice(startIdx);
+    const html = newVideos.map(video => `
         <div class="video-card" data-id="${video.id}">
             <div class="video-thumbnail">
                 <img data-src="/thumbnail/${video.id}" alt="" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';">
@@ -286,7 +306,13 @@ function renderVideos(videos) {
         </div>
     `).join('');
 
-    /* Lazy load thumbnails with IntersectionObserver */
+    if (append) {
+        elements.videoList.insertAdjacentHTML('beforeend', html);
+    } else {
+        elements.videoList.innerHTML = html;
+    }
+
+    /* Lazy load new thumbnails */
     const lazyImages = elements.videoList.querySelectorAll('img[data-src]');
     if ('IntersectionObserver' in window) {
         const observer = new IntersectionObserver((entries) => {
@@ -301,19 +327,39 @@ function renderVideos(videos) {
         }, { rootMargin: '200px' });
         lazyImages.forEach(img => observer.observe(img));
     } else {
-        /* Fallback: load all immediately */
         lazyImages.forEach(img => {
             img.src = img.dataset.src;
             img.removeAttribute('data-src');
         });
     }
 
+    /* Bind click events for new cards */
     elements.videoList.querySelectorAll('.video-card').forEach(card => {
+        if (card._bound) return;
+        card._bound = true;
         card.addEventListener('click', () => {
             const video = state.videos.find(v => v.id == card.dataset.id);
             if (video) playVideo(video);
         });
     });
+
+    /* Load more button */
+    let loadMoreBtn = document.getElementById('loadMoreBtn');
+    if (!state.allLoaded) {
+        if (!loadMoreBtn) {
+            loadMoreBtn = document.createElement('button');
+            loadMoreBtn.id = 'loadMoreBtn';
+            loadMoreBtn.textContent = 'Load More';
+            loadMoreBtn.className = 'load-more-btn';
+            loadMoreBtn.addEventListener('click', () => {
+                loadVideos(state.currentSearch, true);
+            });
+            elements.videoList.parentNode.appendChild(loadMoreBtn);
+        }
+        loadMoreBtn.style.display = 'block';
+    } else if (loadMoreBtn) {
+        loadMoreBtn.style.display = 'none';
+    }
 }
 
 function renderHistory(history) {
