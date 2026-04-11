@@ -275,6 +275,120 @@ lv_error_t api_update_config(int client_fd, const char *body)
     return api_send_json_response(client_fd, "{\"success\":true}", 200);
 }
 
+/*
+ * Resolve a directory by its child folder names.
+ * POST body: JSON array of child directory names, e.g. ["steamapps","workshop","content","431960"]
+ * Returns the matching full path, e.g. "E:\\SteamLibrary\\steamapps\\workshop\\content\\431960"
+ */
+lv_error_t api_resolve_dir(int client_fd, const char *body)
+{
+    if (!body || body[0] != '[') {
+        return api_send_json_response(client_fd,
+            "{\"success\":false,\"error\":\"Invalid body\"}", 400);
+    }
+
+    /* Parse directory names from JSON array */
+    char dir_names[32][256];
+    int name_count = 0;
+    const char *p = body + 1; /* skip '[' */
+    while (*p && *p != ']' && name_count < 32) {
+        if (*p == '"') {
+            p++;
+            const char *start = p;
+            while (*p && *p != '"') p++;
+            size_t len = (size_t)(p - start);
+            if (len >= 256) len = 255;
+            memcpy(dir_names[name_count], start, len);
+            dir_names[name_count][len] = '\0';
+            name_count++;
+            if (*p == '"') p++;
+        } else {
+            p++;
+        }
+    }
+
+    if (name_count == 0) {
+        return api_send_json_response(client_fd,
+            "{\"success\":false,\"error\":\"Empty directory list\"}", 400);
+    }
+
+    /* Search for matching path on all drives */
+    char result_path[1024] = {0};
+
+#ifdef _WIN32
+    DWORD drives = GetLogicalDrives();
+    for (char drive = 'A'; drive <= 'Z' && !result_path[0]; drive++) {
+        if (!(drives & (1 << (drive - 'A')))) continue;
+        UINT type = GetDriveTypeA((char[]){drive, ':', '\\', 0});
+        if (type != DRIVE_FIXED && type != DRIVE_REMOVABLE &&
+            type != DRIVE_REMOTE && type != DRIVE_RAMDISK) continue;
+
+        /* Build search path: X:\dir_names[0]\dir_names[1]\... */
+        char test_path[1024];
+        snprintf(test_path, sizeof(test_path), "%c:\\%s", drive, dir_names[0]);
+        /* Replace / with \ */
+        for (char *c = test_path; *c; c++) { if (*c == '/') *c = '\\'; }
+
+        WIN32_FILE_ATTRIBUTE_DATA attrs;
+        if (!GetFileAttributesExA(test_path, GetFileExInfoStandard, &attrs)) continue;
+        if (!(attrs.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)) continue;
+
+        /* Check if it has the expected child directories */
+        int match = 1;
+        for (int i = 1; i < name_count && match; i++) {
+            char child_path[1024];
+            snprintf(child_path, sizeof(child_path), "%s\\%s", test_path, dir_names[i]);
+            for (char *c = child_path; *c; c++) { if (*c == '/') *c = '\\'; }
+            if (!GetFileAttributesExA(child_path, GetFileExInfoStandard, &attrs) ||
+                !(attrs.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)) {
+                match = 0;
+            }
+            if (match) {
+                snprintf(test_path, sizeof(test_path), "%s", child_path);
+            }
+        }
+
+        if (match) {
+            snprintf(result_path, sizeof(result_path), "%s", test_path);
+        }
+    }
+#else
+    /* Linux: search from root */
+    char test_path[1024];
+    snprintf(test_path, sizeof(test_path), "/%s", dir_names[0]);
+    struct stat st;
+    if (stat(test_path, &st) == 0 && S_ISDIR(st.st_mode)) {
+        int match = 1;
+        for (int i = 1; i < name_count && match; i++) {
+            char child_path[1024];
+            snprintf(child_path, sizeof(child_path), "%s/%s", test_path, dir_names[i]);
+            if (stat(child_path, &st) != 0 || !S_ISDIR(st.st_mode)) {
+                match = 0;
+            }
+            if (match) {
+                snprintf(test_path, sizeof(test_path), "%s", child_path);
+            }
+        }
+        if (match) {
+            snprintf(result_path, sizeof(result_path), "%s", test_path);
+        }
+    }
+#endif
+
+    response_buffer_t buf;
+    api_buffer_init(&buf);
+    if (result_path[0]) {
+        api_buffer_append_str(&buf, "{\"success\":true,\"path\":\"");
+        api_buffer_append_json_str(&buf, result_path);
+        api_buffer_append_str(&buf, "\"}");
+    } else {
+        api_buffer_append_str(&buf, "{\"success\":false,\"error\":\"Directory not found\"}");
+    }
+    lv_error_t err = api_send_json_response(client_fd, buf.data, 200);
+    api_buffer_free(&buf);
+    return err;
+}
+
 #ifdef _WIN32
 #include <windows.h>
 

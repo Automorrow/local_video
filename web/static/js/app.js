@@ -54,6 +54,7 @@ const elements = {
     dirBreadcrumb: document.getElementById('dirBreadcrumb'),
     dirList: document.getElementById('dirList'),
     dirSelectedPath: document.getElementById('dirSelectedPath'),
+    dirPickerBtn: document.getElementById('dirPickerBtn'),
     settingsSaveBtn: document.getElementById('settingsSaveBtn'),
     settingsStatus: document.getElementById('settingsStatus')
 };
@@ -633,6 +634,7 @@ function initEventListeners() {
     elements.settingsBtn.addEventListener('click', openSettings);
     elements.settingsModal.querySelector('.close').addEventListener('click', closeSettings);
     elements.settingsSaveBtn.addEventListener('click', saveSettings);
+    elements.dirPickerBtn.addEventListener('click', pickDirectory);
 }
 
 async function init() {
@@ -667,6 +669,52 @@ async function openSettings() {
 
 function closeSettings() {
     elements.settingsModal.classList.remove('active');
+}
+
+async function pickDirectory() {
+    if (!window.showDirectoryPicker) {
+        showSettingsStatus('Your browser does not support directory picking. Use the browser below instead.', 'error');
+        return;
+    }
+
+    try {
+        const dirHandle = await window.showDirectoryPicker();
+        const dirName = dirHandle.name;
+
+        /* Collect child directory names for path resolution */
+        const childNames = [dirName];
+        try {
+            for await (const entry of dirHandle.values()) {
+                if (entry.kind === 'directory' && childNames.length < 10) {
+                    childNames.push(entry.name);
+                }
+            }
+        } catch (e) { /* permission denied for some children, ignore */ }
+
+        showSettingsStatus('Resolving path...', 'success');
+
+        /* Send to backend to resolve full path */
+        const result = await fetchJSON(API_BASE + '/resolve-dir', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(childNames)
+        });
+
+        if (result && result.success && result.path) {
+            settingsSelectedDir = result.path;
+            elements.dirSelectedPath.textContent = settingsSelectedDir;
+            elements.dirList.querySelectorAll('.dir-item').forEach(i => i.classList.remove('selected'));
+            showSettingsStatus('Directory selected: ' + settingsSelectedDir, 'success');
+            /* Navigate browser to show the selected directory */
+            browseDir(settingsSelectedDir);
+        } else {
+            showSettingsStatus('Could not resolve directory path. Try browsing manually below.', 'error');
+        }
+    } catch (e) {
+        if (e.name !== 'AbortError') {
+            showSettingsStatus('Error: ' + e.message, 'error');
+        }
+    }
 }
 
 async function browseDir(path) {

@@ -48,5 +48,6 @@ lv_error_t api_get_categories(int client_fd);
 lv_error_t api_get_config(int client_fd);
 lv_error_t api_update_config(int client_fd, const char *body);
 lv_error_t api_browse_directories(int client_fd, const char *query);
+lv_error_t api_resolve_dir(int client_fd, const char *body);
 
 #endif

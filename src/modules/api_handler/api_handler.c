@@ -59,6 +59,11 @@ lv_error_t api_handler_handle(int client_fd, const HttpRequest *req)
             free(body);
             return err;
         }
+        if (strcmp(path, "resolve-dir") == 0) {
+            lv_error_t err = api_resolve_dir(client_fd, body);
+            free(body);
+            return err;
+        }
         free(body);
     } else if (strcmp(req->method, "DELETE") == 0) {
         if (strncmp(path, "history/", 8) == 0) {
