@@ -582,8 +582,10 @@ lv_error_t api_browse_directories(int client_fd, const char *query)
                     type == DRIVE_REMOTE || type == DRIVE_RAMDISK) {
                     if (!first) api_buffer_append_str(&buf, ",");
                     first = 0;
-                    api_buffer_append_str(&buf, "{\"name\":\"");
                     char letter[4] = { 'A' + i, ':', '\\', 0 };
+                    api_buffer_append_str(&buf, "{\"name\":\"");
+                    api_buffer_append_json_str(&buf, letter);
+                    api_buffer_append_str(&buf, "\",\"path\":\"");
                     api_buffer_append_json_str(&buf, letter);
                     api_buffer_append_str(&buf, "\",\"type\":\"drive\"}");
                 }
