@@ -76,16 +76,27 @@ lv_error_t http_server_send_file_response(int client_fd,
 
     /* Get file size (use 64-bit functions for files > 2GB) */
 #ifdef _WIN32
+    if (_fseeki64(fp, 0, SEEK_END) != 0) {
+        log_error("Failed to seek end of '%s'", file_path);
+        fclose(fp);
+        return http_response_send_error(client_fd, 500, "Server error");
+    }
     file_size = (int64_t)_ftelli64(fp);
+    _fseeki64(fp, 0, SEEK_SET);
 #else
+    if (fseeko(fp, 0, SEEK_END) != 0) {
+        log_error("Failed to seek end of '%s'", file_path);
+        fclose(fp);
+        return http_response_send_error(client_fd, 500, "Server error");
+    }
     file_size = (int64_t)ftello(fp);
+    fseeko(fp, 0, SEEK_SET);
 #endif
     if (file_size < 0) {
         log_error("Failed to get size of '%s'", file_path);
         fclose(fp);
         return http_response_send_error(client_fd, 500, "Server error");
     }
-    fseek(fp, 0, SEEK_SET);
 
     log_info("Serving file '%s' (size=%lld bytes)", file_path, (long long)file_size);
 
