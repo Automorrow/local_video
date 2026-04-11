@@ -659,8 +659,11 @@ async function openSettings() {
         elements.settingsPort.value = config.port || '';
         settingsSelectedDir = config.scan_directory || '';
         elements.dirSelectedPath.textContent = settingsSelectedDir || 'None';
+        /* Start browsing from drive root or current path's drive */
         const startPath = settingsSelectedDir ? settingsSelectedDir.substring(0, 3) : '';
         browseDir(startPath);
+    } else {
+        browseDir('');
     }
 }
 
@@ -669,7 +672,8 @@ function closeSettings() {
 }
 
 async function browseDir(path) {
-    const url = API_BASE + '/browse?path=' + encodeURIComponent(path || '');
+    if (!path || path === 'undefined') path = '';
+    const url = API_BASE + '/browse?path=' + encodeURIComponent(path);
     const dirs = await fetchJSON(url);
     if (!dirs || !Array.isArray(dirs)) {
         elements.dirList.innerHTML = '<div class="dir-empty">Unable to read directory</div>';
