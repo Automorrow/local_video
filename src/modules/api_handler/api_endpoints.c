@@ -596,7 +596,16 @@ lv_error_t api_browse_directories(int client_fd, const char *query)
         /* Convert to wide char */
         MultiByteToWideChar(CP_UTF8, 0, search_utf8, -1, search_path, 1024);
 
-        HANDLE hFind = FindFirstFileW(search_path, &find_data);
+        /* Use FindExSearchLimitToDirectories to only enumerate directories.
+         * FindExInfoStandard is more compatible than FindExInfoBasic. */
+        HANDLE hFind = FindFirstFileExW(
+            search_path,
+            FindExInfoStandard,
+            &find_data,
+            FindExSearchLimitToDirectories,
+            NULL,
+            0
+        );
         int dir_count = 0;
         if (hFind != INVALID_HANDLE_VALUE) {
             do {
