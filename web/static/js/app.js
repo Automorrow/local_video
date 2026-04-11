@@ -554,10 +554,10 @@ function initEventListeners() {
         debouncedSearch(e.target.value);
     });
 
-    elements.searchInput.addEventListener('keypress', (e) => {
+    elements.searchInput.addEventListener('keydown', (e) => {
         if (e.key === 'Enter') {
             if (state.searchTimeout) clearTimeout(state.searchTimeout);
-            loadVideos(elements.searchInput.value);
+            loadVideos(elements.searchInput.value.trim());
         }
     });
     
@@ -581,12 +581,12 @@ function initEventListeners() {
     elements.clearHistoryBtn.addEventListener('click', clearHistory);
     
     elements.addBlacklistBtn.addEventListener('click', () => {
-        addBlacklist(elements.blacklistInput.value);
+        addBlacklist(elements.blacklistInput.value.trim());
     });
-    
-    elements.blacklistInput.addEventListener('keypress', (e) => {
+
+    elements.blacklistInput.addEventListener('keydown', (e) => {
         if (e.key === 'Enter') {
-            addBlacklist(elements.blacklistInput.value);
+            addBlacklist(elements.blacklistInput.value.trim());
         }
     });
     

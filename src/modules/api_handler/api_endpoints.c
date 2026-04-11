@@ -865,11 +865,25 @@ lv_error_t api_add_blacklist(int client_fd, const char *body)
             path_end = strchr(path_start, '"');
             if (path_end) {
                 len = (size_t)(path_end - path_start);
-                if (len < sizeof(path)) {
-                    memcpy(path, path_start, len);
-                    path[len] = '\0';
-                }
+                if (len >= sizeof(path)) len = sizeof(path) - 1;
+                memcpy(path, path_start, len);
+                path[len] = '\0';
             }
+        }
+    }
+
+    /* Trim leading/trailing whitespace from path */
+    {
+        size_t len = strlen(path);
+        while (len > 0 && (path[len - 1] == ' ' || path[len - 1] == '\t' || path[len - 1] == '\n' || path[len - 1] == '\r')) {
+            path[--len] = '\0';
+        }
+        size_t start = 0;
+        while (start < len && (path[start] == ' ' || path[start] == '\t' || path[start] == '\n' || path[start] == '\r')) {
+            start++;
+        }
+        if (start > 0) {
+            memmove(path, path + start, len - start + 1);
         }
     }
 
