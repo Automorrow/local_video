@@ -70,12 +70,11 @@ int main(int argc, char *argv[])
     /* Wait for HTTP server to be ready (port assigned if it was 0) */
     http_server_wait_ready();
 
-    /* Auto-open browser: settings page if no video dir configured, otherwise main page */
+    /* Auto-open browser to main page */
     {
         const lv_config_t *cfg = config_get();
         char url[256];
-        const char *hash = (cfg->scan_directory && cfg->scan_directory[0]) ? "" : "#settings";
-        snprintf(url, sizeof(url), "http://127.0.0.1:%d/%s", (int)cfg->http_port, hash);
+        snprintf(url, sizeof(url), "http://127.0.0.1:%d/", (int)cfg->http_port);
         log_info("Opening browser: %s", url);
         open_browser(url);
     }
