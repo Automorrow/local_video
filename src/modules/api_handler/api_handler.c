@@ -40,6 +40,9 @@ lv_error_t api_handler_handle(int client_fd, const HttpRequest *req)
         if (strcmp(path, "browse") == 0) {
             return api_browse_directories(client_fd, req->query);
         }
+        if (strcmp(path, "scan-status") == 0) {
+            return api_get_scan_status(client_fd);
+        }
     } else if (strcmp(req->method, "POST") == 0) {
         char *body = api_read_request_body(client_fd, req->content_length);
         if (strcmp(path, "history") == 0) {

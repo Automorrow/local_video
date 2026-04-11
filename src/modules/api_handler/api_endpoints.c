@@ -10,6 +10,21 @@
 #include <inttypes.h>
 #include <strings.h>
 
+lv_error_t api_get_scan_status(int client_fd)
+{
+    int scanning = video_scanner_is_scanning();
+    int64_t video_count = 0;
+    db_manager_video_count(&video_count);
+
+    char response[256];
+    snprintf(response, sizeof(response),
+        "{\"scanning\":%s,\"video_count\":%" PRId64 "}",
+        scanning ? "true" : "false",
+        video_count);
+
+    return api_send_json_response(client_fd, response, 200);
+}
+
 #ifdef _WIN32
 #define STRCASECMP _stricmp
 #else

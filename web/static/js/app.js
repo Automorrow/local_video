@@ -853,13 +853,25 @@ async function saveSettings() {
         showSettingsStatus('Settings saved! Rescanning videos...', 'success');
         setTimeout(() => {
             closeSettings();
-            /* Poll for videos until scan completes */
+            /* Poll scan status until scanning finishes, then load videos once */
             let attempts = 0;
             const poll = async () => {
-                await loadVideos();
+                const status = await fetchJSON(API_BASE + '/scan-status');
                 attempts++;
-                if (attempts < 20) {
+                if (status && !status.scanning) {
+                    await loadVideos();
+                    if (status.video_count > 0) {
+                        showToast(`Scan complete: ${status.video_count} videos found`, 'success');
+                    } else {
+                        showToast('Scan complete. No videos found.', 'info');
+                    }
+                    return;
+                }
+                if (attempts < 60) {
                     setTimeout(poll, 1000);
+                } else {
+                    await loadVideos();
+                    showToast('Scan timeout. Videos may still be loading.', 'info');
                 }
             };
             poll();

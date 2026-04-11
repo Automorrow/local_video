@@ -7,5 +7,6 @@ lv_error_t video_scanner_scan(const char *directory);
 lv_error_t video_scanner_rescan(void);
 lv_error_t video_scanner_start_watcher(void);
 lv_error_t video_scanner_stop_watcher(void);
+int video_scanner_is_scanning(void);
 
 #endif /* VIDEO_SCANNER_H */

@@ -121,6 +121,15 @@ lv_error_t video_scanner_rescan(void)
     return video_scanner_scan(config_get()->scan_directory);
 }
 
+int video_scanner_is_scanning(void)
+{
+    int scanning = 0;
+    pthread_mutex_lock(&scan_mutex);
+    scanning = scan_in_progress;
+    pthread_mutex_unlock(&scan_mutex);
+    return scanning;
+}
+
 /* ====== Module Lifecycle ====== */
 
 static void video_scanner_init(void)
