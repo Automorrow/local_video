@@ -286,6 +286,8 @@ lv_error_t api_update_config(int client_fd, const char *body)
             return api_send_json_response(client_fd,
                 "{\"success\":false,\"error\":\"Invalid directory\"}", 400);
         }
+        /* Trigger video scan for the new directory */
+        video_scanner_scan(dir_str);
     }
 
     return api_send_json_response(client_fd, "{\"success\":true}", 200);
