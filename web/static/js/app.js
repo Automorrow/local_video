@@ -636,24 +636,28 @@ function initEventListeners() {
 }
 
 async function init() {
-    initEventListeners();
+    try {
+        initEventListeners();
 
-    /* Open settings immediately if URL has #settings (don't wait for data) */
-    if (window.location.hash === '#settings') {
-        openSettings();
-    }
-
-    /* Listen for hash changes (e.g. manual URL edit) */
-    window.addEventListener('hashchange', () => {
+        /* Open settings immediately if URL has #settings (don't wait for data) */
         if (window.location.hash === '#settings') {
             openSettings();
-        } else {
-            closeSettings();
         }
-    });
 
-    await loadFavorites();
-    await loadVideos();
+        /* Listen for hash changes (e.g. manual URL edit) */
+        window.addEventListener('hashchange', () => {
+            if (window.location.hash === '#settings') {
+                openSettings();
+            } else {
+                closeSettings();
+            }
+        });
+
+        await loadFavorites();
+        await loadVideos();
+    } catch (e) {
+        console.error('Init error:', e);
+    }
 }
 
 /* ===== Settings ===== */
@@ -679,7 +683,9 @@ async function openSettings() {
 }
 
 function closeSettings() {
-    elements.settingsModal.classList.remove('active');
+    if (elements.settingsModal) {
+        elements.settingsModal.classList.remove('active');
+    }
     document.title = 'LocalVideoServer';
 }
 
