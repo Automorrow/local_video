@@ -126,6 +126,14 @@ static void *server_loop(void *arg)
         return NULL;
     }
 
+    /* If port was 0, get the actual assigned port */
+    if (server_port == 0) {
+        socklen_t addr_len = sizeof(addr);
+        if (getsockname(server_socket, (struct sockaddr *)&addr, &addr_len) == 0) {
+            server_port = ntohs(addr.sin_port);
+        }
+    }
+
     if (listen(server_socket, 64) < 0) {
         log_error("Failed to listen on port %d: %s", server_port, strerror(errno));
         sock_close(server_socket);

@@ -7,7 +7,7 @@
 
 static char db_path_buf[512] = "./local_video.db";
 static char web_root_buf[512] = "./web/static";
-static char scan_dir_buf[512] = "./videos";
+static char scan_dir_buf[512] = "";
 
 static lv_config_t config = {
     .database_path = db_path_buf,
@@ -18,6 +18,12 @@ static lv_config_t config = {
 
 void config_parse_args(int argc, char *argv[])
 {
+#ifdef _WIN32
+    /* No defaults on Windows - user must configure via web UI */
+    config.http_port = 0;
+    scan_dir_buf[0] = '\0';
+#endif
+
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "--port") == 0 && i + 1 < argc) {
             char *endptr;

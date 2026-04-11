@@ -126,8 +126,13 @@ static void video_scanner_init(void)
 {
     log_info("[模块] Video scanner 初始化");
 
-    /* Ensure scan directory exists */
     const char *scan_dir = config_get()->scan_directory;
+    if (!scan_dir || scan_dir[0] == '\0') {
+        log_info("[扫描] 未配置视频目录，跳过扫描");
+        return;
+    }
+
+    /* Ensure scan directory exists */
 #ifdef _WIN32
     CreateDirectoryA(scan_dir, NULL);
 #else
@@ -149,6 +154,12 @@ static void video_scanner_sub(void)
 
 static void video_scanner_run(void)
 {
+    const char *scan_dir = config_get()->scan_directory;
+    if (!scan_dir || scan_dir[0] == '\0') {
+        log_info("[模块] 未配置视频目录，跳过增量监控");
+        return;
+    }
+
     log_info("[模块] 启动增量文件监控系统...");
     video_scanner_start_watcher();
 }

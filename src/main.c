@@ -67,11 +67,12 @@ int main(int argc, char *argv[])
 
     log_info("Server is running... Press Ctrl+C to stop.");
 
-    /* Auto-open browser on first launch */
+    /* Auto-open browser: settings page if no video dir configured, otherwise main page */
     {
         const lv_config_t *cfg = config_get();
         char url[256];
-        snprintf(url, sizeof(url), "http://127.0.0.1:%d/#settings", (int)cfg->http_port);
+        const char *hash = (cfg->scan_directory && cfg->scan_directory[0]) ? "" : "#settings";
+        snprintf(url, sizeof(url), "http://127.0.0.1:%d/%s", (int)cfg->http_port, hash);
         log_info("Opening browser: %s", url);
         open_browser(url);
     }
