@@ -596,19 +596,16 @@ lv_error_t api_browse_directories(int client_fd, const char *query)
         /* Convert to wide char */
         MultiByteToWideChar(CP_UTF8, 0, search_utf8, -1, search_path, 1024);
 
-        /* Use FindExSearchLimitToDirectories to only enumerate directories.
-         * FindExInfoStandard is more compatible than FindExInfoBasic. */
-        HANDLE hFind = FindFirstFileExW(
-            search_path,
-            FindExInfoStandard,
-            &find_data,
-            FindExSearchLimitToDirectories,
-            NULL,
-            0
-        );
+        /* FindExSearchLimitToDirectories is unreliable on drive roots.
+         * Use FindFirstFileW with a scan limit to avoid hanging on large dirs. */
+        HANDLE hFind = FindFirstFileW(search_path, &find_data);
         int dir_count = 0;
+        int scan_count = 0;
+        #define MAX_SCAN_ENTRIES 10000
         if (hFind != INVALID_HANDLE_VALUE) {
             do {
+                scan_count++;
+                if (scan_count > MAX_SCAN_ENTRIES) break;
                 if (wcscmp(find_data.cFileName, L".") == 0 ||
                     wcscmp(find_data.cFileName, L"..") == 0) continue;
                 if (!(find_data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)) continue;
