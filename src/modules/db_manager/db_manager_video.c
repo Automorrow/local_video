@@ -1,6 +1,7 @@
 #include "db_manager_internal.h"
 #include "../../shared/log/log.h"
 #include <stdio.h>
+#include <string.h>
 
 lv_error_t db_manager_video_insert(const char *path, const char *title, const char *category, int64_t size) {
     if (!path || !title || !category) {
@@ -23,6 +24,34 @@ lv_error_t db_manager_video_insert(const char *path, const char *title, const ch
     rc = sqlite3_step(stmt);
     sqlite3_finalize(stmt);
     if (rc != SQLITE_DONE) {
+        err = LV_ERROR_DB;
+    }
+    lv_mutex_unlock(&g_mutex);
+    return err;
+}
+
+lv_error_t db_manager_video_search_by_path_substr(const char *substr, char *out_path, size_t out_size) {
+    if (!substr || !out_path) return LV_ERROR_INVALID_ARG;
+    lv_error_t err = LV_OK;
+    lv_mutex_lock(&g_mutex);
+    const char *sql = "SELECT path FROM videos WHERE path LIKE ? LIMIT 1";
+    sqlite3_stmt *stmt = NULL;
+    char pattern[600];
+    snprintf(pattern, sizeof(pattern), "%%%s%%", substr);
+    int rc = sqlite3_prepare_v2(g_db, sql, -1, &stmt, NULL);
+    if (rc == SQLITE_OK) {
+        sqlite3_bind_text(stmt, 1, pattern, -1, SQLITE_TRANSIENT);
+        if (sqlite3_step(stmt) == SQLITE_ROW) {
+            const char *path = (const char *)sqlite3_column_text(stmt, 0);
+            if (path) {
+                strncpy(out_path, path, out_size - 1);
+                out_path[out_size - 1] = '\0';
+            }
+        } else {
+            err = LV_ERROR_DB;
+        }
+        sqlite3_finalize(stmt);
+    } else {
         err = LV_ERROR_DB;
     }
     lv_mutex_unlock(&g_mutex);

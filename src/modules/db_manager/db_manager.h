@@ -78,5 +78,6 @@ lv_error_t db_manager_video_unblacklist_all(void);
 lv_error_t db_manager_video_unblacklist_by_path_prefix(const char *prefix);
 lv_error_t db_manager_video_update(const char *path, const char *title, const char *category, int64_t size);
 lv_error_t db_manager_video_delete_by_path(const char *path);
+lv_error_t db_manager_video_search_by_path_substr(const char *substr, char *out_path, size_t out_size);
 
 #endif /* DB_MANAGER_H */
