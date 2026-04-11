@@ -323,9 +323,10 @@ lv_error_t api_browse_directories(int client_fd, const char *query)
         }
     } else {
         /* List subdirectories of path_buf */
-        snprintf(search_path, sizeof(search_path), "%s\\*", path_buf);
+        char search_utf8[1024];
+        snprintf(search_utf8, sizeof(search_utf8), "%s\\*", path_buf);
         /* Convert to wide char */
-        MultiByteToWideChar(CP_UTF8, 0, search_path, -1, search_path, 1024);
+        MultiByteToWideChar(CP_UTF8, 0, search_utf8, -1, search_path, 1024);
 
         HANDLE hFind = FindFirstFileW(search_path, &find_data);
         if (hFind != INVALID_HANDLE_VALUE) {
