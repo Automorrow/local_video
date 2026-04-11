@@ -129,14 +129,26 @@ static void *server_loop(void *arg)
     if (bind(server_socket, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
         log_error("Failed to bind to port %d: %s", server_port, strerror(errno));
         if (server_port != 0) {
-            log_info("Falling back to random port...");
-            server_port = 0;
-            addr.sin_port = htons(0);
-            if (bind(server_socket, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
-                log_error("Failed to bind to any port: %s", strerror(errno));
-                sock_close(server_socket);
-                server_socket = -1;
-                return NULL;
+            int found = 0;
+            for (uint16_t p = 8081; p <= 8090; p++) {
+                server_port = p;
+                addr.sin_port = htons(server_port);
+                if (bind(server_socket, (struct sockaddr *)&addr, sizeof(addr)) == 0) {
+                    log_info("Bound to fallback port %d", server_port);
+                    found = 1;
+                    break;
+                }
+            }
+            if (!found) {
+                log_info("Falling back to random port...");
+                server_port = 0;
+                addr.sin_port = htons(0);
+                if (bind(server_socket, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
+                    log_error("Failed to bind to any port: %s", strerror(errno));
+                    sock_close(server_socket);
+                    server_socket = -1;
+                    return NULL;
+                }
             }
         } else {
             sock_close(server_socket);

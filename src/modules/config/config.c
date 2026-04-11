@@ -80,8 +80,8 @@ void config_parse_args(int argc, char *argv[])
     config_load();
 
 #ifdef _WIN32
-    /* No defaults on Windows - user must configure via web UI */
-    config.http_port = 0;
+    /* Default port 8080 on Windows, user can override via web UI or args */
+    config.http_port = 8080;
     scan_dir_buf[0] = '\0';
 #endif
 
