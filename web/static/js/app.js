@@ -33,7 +33,7 @@ const elements = {
     allVideosBtn: document.getElementById('allVideosBtn'),
     videoModal: document.getElementById('videoModal'),
     videoPlayer: document.getElementById('videoPlayer'),
-    videoTitle: document.getElementById('videoTitle'),
+    videoTitle: document.getElementById('videoModalTitle'),
     videoPath: document.getElementById('videoPath'),
     toggleFavoriteBtn: document.getElementById('toggleFavoriteBtn'),
     playRandomBtn: document.getElementById('playRandomBtn'),
