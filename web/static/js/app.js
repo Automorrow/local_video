@@ -644,6 +644,15 @@ async function init() {
     if (window.location.hash === '#settings') {
         openSettings();
     }
+
+    /* Listen for hash changes (e.g. manual URL edit) */
+    window.addEventListener('hashchange', () => {
+        if (window.location.hash === '#settings') {
+            openSettings();
+        } else {
+            closeSettings();
+        }
+    });
 }
 
 /* ===== Settings ===== */
