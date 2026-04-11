@@ -79,11 +79,9 @@ void config_parse_args(int argc, char *argv[])
     /* Load persisted config from file first */
     config_load();
 
-#ifdef _WIN32
-    /* Default port 8080 on Windows, user can override via web UI or args */
-    config.http_port = 8080;
-    scan_dir_buf[0] = '\0';
-#endif
+    /* Note: do NOT unconditionally overwrite loaded config values here.
+     * Previous Windows-only blocks that cleared scan_dir_buf caused
+     * the settings page to open on every restart even when configured. */
 
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "--port") == 0 && i + 1 < argc) {
