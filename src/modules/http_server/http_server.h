@@ -7,6 +7,7 @@
 lv_error_t http_server_init(uint16_t port, const char *web_root);
 lv_error_t http_server_start(void);
 lv_error_t http_server_stop(void);
+void http_server_wait_ready(void);
 lv_error_t http_server_close(void);
 
 #endif /* HTTP_SERVER_H */

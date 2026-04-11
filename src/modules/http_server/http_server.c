@@ -19,6 +19,9 @@ static int server_socket = -1;
 static pthread_t server_thread;
 static uint16_t server_port = 8080;
 static char web_root[512] = "./web/static";
+static pthread_mutex_t server_ready_mutex = PTHREAD_MUTEX_INITIALIZER;
+static pthread_cond_t server_ready_cond = PTHREAD_COND_INITIALIZER;
+static volatile int server_ready = 0;
 
 /* Forward declaration for API handler */
 extern lv_error_t api_handler_handle(int client_fd, const HttpRequest *req);
@@ -131,6 +134,7 @@ static void *server_loop(void *arg)
         socklen_t addr_len = sizeof(addr);
         if (getsockname(server_socket, (struct sockaddr *)&addr, &addr_len) == 0) {
             server_port = ntohs(addr.sin_port);
+            config_set_port(server_port);
         }
     }
 
@@ -142,6 +146,12 @@ static void *server_loop(void *arg)
     }
 
     log_info("HTTP server listening on port %d", server_port);
+
+    /* Signal that server is ready and port is assigned */
+    pthread_mutex_lock(&server_ready_mutex);
+    server_ready = 1;
+    pthread_cond_signal(&server_ready_cond);
+    pthread_mutex_unlock(&server_ready_mutex);
 
     while (server_running) {
         struct sockaddr_in client_addr;
@@ -236,6 +246,15 @@ lv_error_t http_server_stop(void)
 
     log_info("HTTP server stopped");
     return LV_OK;
+}
+
+void http_server_wait_ready(void)
+{
+    pthread_mutex_lock(&server_ready_mutex);
+    while (!server_ready) {
+        pthread_cond_wait(&server_ready_cond, &server_ready_mutex);
+    }
+    pthread_mutex_unlock(&server_ready_mutex);
 }
 
 lv_error_t http_server_close(void)

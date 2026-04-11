@@ -67,6 +67,9 @@ int main(int argc, char *argv[])
 
     log_info("Server is running... Press Ctrl+C to stop.");
 
+    /* Wait for HTTP server to be ready (port assigned if it was 0) */
+    http_server_wait_ready();
+
     /* Auto-open browser: settings page if no video dir configured, otherwise main page */
     {
         const lv_config_t *cfg = config_get();

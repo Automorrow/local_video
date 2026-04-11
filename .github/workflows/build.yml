@@ -108,8 +108,6 @@ jobs:
         # Copy all required DLLs (MinGW runtime + sqlite3)
         ntldd -R build/bin/local_video.exe | grep "mingw64" | grep -v "not found" | \
           awk '{print $3}' | sed 's/\\/\//g' | while read dll; do cp "$dll" dist/; done
-        echo "@echo off" > dist/start.bat
-        echo "local_video.exe --port 8080 --video-dir ./videos" >> dist/start.bat
         # Add disclaimer
         echo "## ⚖️ 法律免责声明" > dist/免责声明.txt
         echo "" >> dist/免责声明.txt
