@@ -275,7 +275,7 @@ function renderVideos(videos) {
     elements.videoList.innerHTML = videos.map(video => `
         <div class="video-card" data-id="${video.id}">
             <div class="video-thumbnail">
-                <img src="/thumbnail/${video.id}" alt="" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';">
+                <img data-src="/thumbnail/${video.id}" alt="" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';">
                 <span style="display: none;">▶</span>
                 ${state.favorites.has(video.id) ? '<span class="favorite-badge">❤️</span>' : ''}
             </div>
@@ -285,7 +285,29 @@ function renderVideos(videos) {
                 </div>
         </div>
     `).join('');
-    
+
+    /* Lazy load thumbnails with IntersectionObserver */
+    const lazyImages = elements.videoList.querySelectorAll('img[data-src]');
+    if ('IntersectionObserver' in window) {
+        const observer = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting) {
+                    const img = entry.target;
+                    img.src = img.dataset.src;
+                    img.removeAttribute('data-src');
+                    observer.unobserve(img);
+                }
+            });
+        }, { rootMargin: '200px' });
+        lazyImages.forEach(img => observer.observe(img));
+    } else {
+        /* Fallback: load all immediately */
+        lazyImages.forEach(img => {
+            img.src = img.dataset.src;
+            img.removeAttribute('data-src');
+        });
+    }
+
     elements.videoList.querySelectorAll('.video-card').forEach(card => {
         card.addEventListener('click', () => {
             const video = state.videos.find(v => v.id == card.dataset.id);

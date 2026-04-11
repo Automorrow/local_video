@@ -211,7 +211,7 @@ button.secondary:hover {
     display: flex;
     align-items: center;
     justify-content: center;
-    background-color: var(--bg-tertiary);
+    background: var(--bg-tertiary);
     overflow: hidden;
     position: relative;
 }
