@@ -146,8 +146,12 @@ static void config_exit(void)
 
 int config_path_allowed(const char *path)
 {
-    if (!path || path[0] == '\0') return 0;
-    if (!scan_dir_buf[0]) return 0;
+    if (!path || path[0] == '\0') {
+        /* Allow empty path only when no scan_directory is configured yet,
+         * so the user can browse drives/directories to pick one. */
+        return scan_dir_buf[0] == '\0' ? 1 : 0;
+    }
+    if (!scan_dir_buf[0]) return 1;  /* Not configured yet: allow browsing freely */
 
     char base_norm[PATH_MAX] = {0};
     char path_norm[PATH_MAX] = {0};
