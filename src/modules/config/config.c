@@ -24,11 +24,9 @@ static void config_set_value(const char *key, char *dest_buf, size_t dest_size, 
 {
     char tmp[512] = {0};
     if (db_manager_setting_get(key, tmp, sizeof(tmp)) == LV_OK && tmp[0]) {
-        strncpy(dest_buf, tmp, dest_size - 1);
-        dest_buf[dest_size - 1] = '\0';
+        snprintf(dest_buf, dest_size, "%s", tmp);
     } else if (default_val) {
-        strncpy(dest_buf, default_val, dest_size - 1);
-        dest_buf[dest_size - 1] = '\0';
+        snprintf(dest_buf, dest_size, "%s", default_val);
     }
 }
 
