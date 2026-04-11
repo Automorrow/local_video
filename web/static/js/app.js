@@ -523,6 +523,7 @@ function playVideo(video, resume = true) {
     elements.videoPlayer.onerror = () => {
         showToast('视频无法播放，可能已被删除或加入黑名单', 'error');
         closeModal(elements.videoModal);
+        loadVideos();  /* Refresh list to remove stale entries */
     };
 
     if (resume && video.position && video.position > 0) {
