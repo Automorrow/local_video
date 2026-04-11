@@ -736,7 +736,10 @@ async function saveSettings() {
 
     if (result && result.success) {
         showSettingsStatus('Settings saved! Rescanning videos...', 'success');
-        setTimeout(() => loadVideos(), 500);
+        setTimeout(() => {
+            closeSettings();
+            loadVideos();
+        }, 500);
     } else {
         showSettingsStatus('Failed to save settings', 'error');
     }
