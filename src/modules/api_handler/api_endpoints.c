@@ -24,6 +24,63 @@ static void resolve_search_recursive(const char *base, const char *target,
     int depth, int max_depth);
 static int resolve_verify_children(const char *dir_path, char children[][256], int child_count);
 
+typedef struct {
+    response_buffer_t *buf;
+    int first;
+} browse_db_ctx_t;
+
+static void normalize_slashes(char *path)
+{
+    for (char *p = path; *p; p++) {
+        if (*p == '\\') *p = '/';
+    }
+}
+
+static int browse_db_callback(const char *name, const char *path, void *user_data)
+{
+    browse_db_ctx_t *ctx = (browse_db_ctx_t *)user_data;
+    if (!ctx->first) {
+        api_buffer_append_str(ctx->buf, ",");
+    }
+    ctx->first = 0;
+
+    char path_copy[1024];
+    strncpy(path_copy, path, sizeof(path_copy) - 1);
+    path_copy[sizeof(path_copy) - 1] = '\0';
+#ifdef _WIN32
+    for (char *p = path_copy; *p; p++) {
+        if (*p == '/') *p = '\\';
+    }
+#endif
+
+    api_buffer_append_str(ctx->buf, "{\"name\":\"");
+    api_buffer_append_json_str(ctx->buf, name);
+    api_buffer_append_str(ctx->buf, "\",\"path\":\"");
+    api_buffer_append_json_str(ctx->buf, path_copy);
+    api_buffer_append_str(ctx->buf, "\"}");
+    return 0;
+}
+
+static lv_error_t try_browse_from_db(int client_fd, const char *parent_path)
+{
+    response_buffer_t buf;
+    api_buffer_init(&buf);
+    api_buffer_append_str(&buf, "[");
+
+    browse_db_ctx_t ctx = { &buf, 1 };
+    lv_error_t err = db_manager_directory_get_children(parent_path, browse_db_callback, &ctx);
+
+    if (err == LV_OK && buf.size > 1) {
+        api_buffer_append_str(&buf, "]");
+        err = api_send_json_response(client_fd, buf.data, 200);
+        api_buffer_free(&buf);
+        return err;
+    }
+
+    api_buffer_free(&buf);
+    return LV_ERROR_UNKNOWN;
+}
+
 static const char *json_find_key_colon(const char *body, const char *key)
 {
     size_t key_len = strlen(key);
@@ -617,6 +674,16 @@ lv_error_t api_browse_directories(int client_fd, const char *query)
             }
         }
     } else {
+        /* Try database cache first */
+        char db_query_path[512];
+        strncpy(db_query_path, path_buf, sizeof(db_query_path) - 1);
+        db_query_path[sizeof(db_query_path) - 1] = '\0';
+        normalize_slashes(db_query_path);
+        if (try_browse_from_db(client_fd, db_query_path) == LV_OK) {
+            api_buffer_free(&buf);
+            return LV_OK;
+        }
+
         /* List subdirectories of path_buf */
         char search_utf8[1024];
         snprintf(search_utf8, sizeof(search_utf8), "%s\\*", path_buf);
@@ -644,6 +711,7 @@ lv_error_t api_browse_directories(int client_fd, const char *query)
 
                 char full_path[1024];
                 snprintf(full_path, sizeof(full_path), "%s/%s", path_buf, utf8_name);
+                db_manager_directory_upsert(full_path, utf8_name, path_buf);
                 /* Normalize to backslash */
                 for (char *p = full_path; *p; p++) {
                     if (*p == '/') *p = '\\';
@@ -713,6 +781,16 @@ lv_error_t api_browse_directories(int client_fd, const char *query)
     api_buffer_init(&buf);
     api_buffer_append_str(&buf, "[");
 
+    /* Try database cache first */
+    char db_query_path[512];
+    strncpy(db_query_path, path_buf, sizeof(db_query_path) - 1);
+    db_query_path[sizeof(db_query_path) - 1] = '\0';
+    normalize_slashes(db_query_path);
+    if (try_browse_from_db(client_fd, db_query_path) == LV_OK) {
+        api_buffer_free(&buf);
+        return LV_OK;
+    }
+
     DIR *dir = opendir(path_buf);
     if (dir) {
         struct dirent *entry;
@@ -725,6 +803,7 @@ lv_error_t api_browse_directories(int client_fd, const char *query)
 
             struct stat st;
             if (stat(full_path, &st) == 0 && S_ISDIR(st.st_mode)) {
+                db_manager_directory_upsert(full_path, entry->d_name, path_buf);
                 if (!first) api_buffer_append_str(&buf, ",");
                 first = 0;
                 api_buffer_append_str(&buf, "{\"name\":\"");

@@ -67,6 +67,8 @@ set(CORE_SOURCES
     src/modules/db_manager/db_manager_video.c
     src/modules/db_manager/db_manager_user.c
     src/modules/db_manager/db_manager_blacklist.c
+    src/modules/db_manager/db_manager_settings.c
+    src/modules/db_manager/db_manager_directory.c
     src/modules/http_server/http_server.c
     src/modules/http_server/http_server_file.c
     src/modules/http_server/http_server_thumbnail.c
@@ -188,6 +190,8 @@ if(NOT IS_WINDOWS)
         src/modules/db_manager/db_manager_video.c
         src/modules/db_manager/db_manager_user.c
         src/modules/db_manager/db_manager_blacklist.c
+        src/modules/db_manager/db_manager_settings.c
+        src/modules/db_manager/db_manager_directory.c
         src/modules/config/config.c
         src/shared/thread/thread.c
         src/shared/log/log.c
@@ -200,6 +204,8 @@ if(NOT IS_WINDOWS)
         src/modules/db_manager/db_manager_video.c
         src/modules/db_manager/db_manager_user.c
         src/modules/db_manager/db_manager_blacklist.c
+        src/modules/db_manager/db_manager_settings.c
+        src/modules/db_manager/db_manager_directory.c
         src/modules/config/config.c
         src/shared/module/module.c
         src/shared/thread/thread.c
@@ -240,6 +246,8 @@ else()
         src/modules/db_manager/db_manager_video.c
         src/modules/db_manager/db_manager_user.c
         src/modules/db_manager/db_manager_blacklist.c
+        src/modules/db_manager/db_manager_settings.c
+        src/modules/db_manager/db_manager_directory.c
         src/modules/config/config.c
         src/shared/thread/thread.c
         src/shared/log/log.c
@@ -255,6 +263,8 @@ else()
         src/modules/db_manager/db_manager_video.c
         src/modules/db_manager/db_manager_user.c
         src/modules/db_manager/db_manager_blacklist.c
+        src/modules/db_manager/db_manager_settings.c
+        src/modules/db_manager/db_manager_directory.c
         src/modules/config/config.c
         src/shared/module/module.c
         src/shared/thread/thread.c

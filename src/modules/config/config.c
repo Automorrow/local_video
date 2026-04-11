@@ -2,6 +2,7 @@
 #include "../../shared/module/module.h"
 #include "../../shared/log/log.h"
 #include "../../include/platform.h"
+#include "../db_manager/db_manager.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -10,8 +11,6 @@ static char db_path_buf[512] = "./local_video.db";
 static char web_root_buf[512] = "./web/static";
 static char scan_dir_buf[512] = "";
 
-#define CONFIG_FILE "local_video.cfg"
-
 static lv_config_t config = {
     .database_path = db_path_buf,
     .web_root = web_root_buf,
@@ -19,70 +18,48 @@ static lv_config_t config = {
     .scan_directory = scan_dir_buf
 };
 
-static void config_load(void)
+static int config_db_loaded = 0;
+
+static void config_set_value(const char *key, char *dest_buf, size_t dest_size, const char *default_val)
 {
-    FILE *fp = fopen(CONFIG_FILE, "r");
-    if (!fp) return;
-
-    char line[1024];
-    while (fgets(line, sizeof(line), fp)) {
-        /* Remove trailing newline */
-        size_t len = strlen(line);
-        while (len > 0 && (line[len-1] == '\n' || line[len-1] == '\r'))
-            line[--len] = '\0';
-
-        char *eq = strchr(line, '=');
-        if (!eq) continue;
-        *eq = '\0';
-        char *key = line;
-        char *val = eq + 1;
-
-        if (strcmp(key, "http_port") == 0) {
-            int port = atoi(val);
-            if (port > 0 && port <= 65535) {
-                config.http_port = (uint16_t)port;
-            }
-        } else if (strcmp(key, "scan_directory") == 0) {
-            strncpy(scan_dir_buf, val, sizeof(scan_dir_buf) - 1);
-            scan_dir_buf[sizeof(scan_dir_buf) - 1] = '\0';
-            config.scan_directory = scan_dir_buf;
-        } else if (strcmp(key, "database_path") == 0) {
-            strncpy(db_path_buf, val, sizeof(db_path_buf) - 1);
-            db_path_buf[sizeof(db_path_buf) - 1] = '\0';
-            config.database_path = db_path_buf;
-        } else if (strcmp(key, "web_root") == 0) {
-            strncpy(web_root_buf, val, sizeof(web_root_buf) - 1);
-            web_root_buf[sizeof(web_root_buf) - 1] = '\0';
-            config.web_root = web_root_buf;
-        }
+    char tmp[512] = {0};
+    if (db_manager_setting_get(key, tmp, sizeof(tmp)) == LV_OK && tmp[0]) {
+        strncpy(dest_buf, tmp, dest_size - 1);
+        dest_buf[dest_size - 1] = '\0';
+    } else if (default_val) {
+        strncpy(dest_buf, default_val, dest_size - 1);
+        dest_buf[dest_size - 1] = '\0';
     }
-    fclose(fp);
-    log_info("Config loaded from %s", CONFIG_FILE);
 }
 
-static void config_save(void)
+void config_reload_from_db(void)
 {
-    FILE *fp = fopen(CONFIG_FILE, "w");
-    if (!fp) {
-        log_error("Failed to save config to %s", CONFIG_FILE);
-        return;
-    }
-    fprintf(fp, "http_port=%d\n", config.http_port);
-    fprintf(fp, "scan_directory=%s\n", config.scan_directory ? config.scan_directory : "");
-    fprintf(fp, "database_path=%s\n", config.database_path ? config.database_path : "");
-    fprintf(fp, "web_root=%s\n", config.web_root ? config.web_root : "");
-    fclose(fp);
+    if (config_db_loaded) return;
+
+    char port_str[16] = {0};
+    config_set_value("http_port", port_str, sizeof(port_str), "8080");
+    config.http_port = (uint16_t)atoi(port_str);
+
+    config_set_value("scan_directory", scan_dir_buf, sizeof(scan_dir_buf), "");
+    config.scan_directory = scan_dir_buf;
+
+    config_set_value("database_path", db_path_buf, sizeof(db_path_buf), "./local_video.db");
+    config.database_path = db_path_buf;
+
+    config_set_value("web_root", web_root_buf, sizeof(web_root_buf), "./web/static");
+    config.web_root = web_root_buf;
+
+    config_db_loaded = 1;
+    log_info("Config loaded from database");
+}
+
+static void config_persist_value(const char *key, const char *value)
+{
+    db_manager_setting_set(key, value);
 }
 
 void config_parse_args(int argc, char *argv[])
 {
-    /* Load persisted config from file first */
-    config_load();
-
-    /* Note: do NOT unconditionally overwrite loaded config values here.
-     * Previous Windows-only blocks that cleared scan_dir_buf caused
-     * the settings page to open on every restart even when configured. */
-
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "--port") == 0 && i + 1 < argc) {
             char *endptr;
@@ -135,7 +112,7 @@ lv_error_t config_set_scan_directory(const char *dir)
     scan_dir_buf[sizeof(scan_dir_buf) - 1] = '\0';
     config.scan_directory = scan_dir_buf;
     log_info("Config updated: scan_directory = %s", scan_dir_buf);
-    config_save();
+    config_persist_value("scan_directory", scan_dir_buf);
     return LV_OK;
 }
 
@@ -143,8 +120,10 @@ lv_error_t config_set_port(uint16_t port)
 {
     if (port == 0) return LV_ERROR_INVALID_ARG;
     config.http_port = port;
+    char port_str[16];
+    snprintf(port_str, sizeof(port_str), "%d", (int)port);
     log_info("Config updated: http_port = %d", port);
-    config_save();
+    config_persist_value("http_port", port_str);
     return LV_OK;
 }
 

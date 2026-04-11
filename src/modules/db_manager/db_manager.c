@@ -158,9 +158,21 @@ lv_error_t db_manager_init(const char *db_path) {
         "    path TEXT UNIQUE NOT NULL,"
         "    created_at INTEGER DEFAULT (strftime('%s', 'now'))"
         ");"
+        "CREATE TABLE IF NOT EXISTS settings ("
+        "    key TEXT PRIMARY KEY,"
+        "    value TEXT NOT NULL"
+        ");"
+        "CREATE TABLE IF NOT EXISTS directories ("
+        "    id INTEGER PRIMARY KEY AUTOINCREMENT,"
+        "    path TEXT UNIQUE NOT NULL,"
+        "    name TEXT NOT NULL,"
+        "    parent_path TEXT,"
+        "    scanned_at INTEGER DEFAULT (strftime('%s', 'now'))"
+        ");"
         "CREATE INDEX IF NOT EXISTS idx_videos_category ON videos(category);"
         "CREATE INDEX IF NOT EXISTS idx_videos_path ON videos(path);"
-        "CREATE INDEX IF NOT EXISTS idx_history_video ON history(video_id);";
+        "CREATE INDEX IF NOT EXISTS idx_history_video ON history(video_id);"
+        "CREATE INDEX IF NOT EXISTS idx_directories_parent ON directories(parent_path);"; 
 
     char *err_msg = NULL;
     int rc = sqlite3_exec(g_db, sql, NULL, NULL, &err_msg);

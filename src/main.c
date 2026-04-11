@@ -62,6 +62,9 @@ int main(int argc, char *argv[])
     log_info("Subscribing modules...");
     module_sub_all();
 
+    /* Load persisted config from database now that db_manager is ready */
+    config_reload_from_db();
+
     log_info("Running modules...");
     module_run_all();
 

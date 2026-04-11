@@ -95,6 +95,7 @@ static lv_error_t scan_directory_incremental_ex(const char *dir_path, int *file_
             if (find_data.dwFileAttributes & (FILE_ATTRIBUTE_HIDDEN | FILE_ATTRIBUTE_REPARSE_POINT)) {
                 continue;
             }
+            db_manager_directory_upsert(full_path, utf8_name, dir_path);
             scan_directory_incremental_ex(full_path, file_count, depth + 1);
         } else {
             if (scan_single_file(full_path) == LV_OK) {
@@ -173,6 +174,7 @@ static lv_error_t scan_directory_incremental_ex(const char *dir_path, int *file_
         if (stat(full_path, &st) < 0) continue;
 
         if (S_ISDIR(st.st_mode)) {
+            db_manager_directory_upsert(full_path, entry->d_name, dir_path);
             scan_directory_incremental_ex(full_path, file_count, depth + 1);
         } else {
             if (scan_single_file(full_path) == LV_OK) {

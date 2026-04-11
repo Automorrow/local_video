@@ -12,6 +12,7 @@ typedef struct {
 
 const lv_config_t *config_get(void);
 void config_parse_args(int argc, char *argv[]);
+void config_reload_from_db(void);
 lv_error_t config_set_scan_directory(const char *dir);
 lv_error_t config_set_port(uint16_t port);
 int config_path_allowed(const char *path);

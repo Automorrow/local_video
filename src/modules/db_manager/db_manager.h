@@ -80,4 +80,13 @@ lv_error_t db_manager_video_update(const char *path, const char *title, const ch
 lv_error_t db_manager_video_delete_by_path(const char *path);
 lv_error_t db_manager_video_search_by_path_substr(const char *substr, char *out_path, size_t out_size);
 
+lv_error_t db_manager_setting_get(const char *key, char *value, size_t value_size);
+lv_error_t db_manager_setting_set(const char *key, const char *value);
+
+lv_error_t db_manager_directory_upsert(const char *path, const char *name, const char *parent_path);
+lv_error_t db_manager_directory_get_children(const char *parent_path,
+    int (*callback)(const char *name, const char *path, void *user_data),
+    void *user_data);
+lv_error_t db_manager_directory_clear(void);
+
 #endif /* DB_MANAGER_H */
