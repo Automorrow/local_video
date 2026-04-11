@@ -44,8 +44,7 @@ static int parse_request_line(const char *line, HttpRequest *req)
         return -1;
     }
 
-    strncpy(req->method, method, HTTP_METHOD_MAX - 1);
-    req->method[HTTP_METHOD_MAX - 1] = '\0';
+    snprintf(req->method, sizeof(req->method), "%s", method);
 
     /* Separate path and query */
     char *question_mark = strchr(path_with_query, '?');
@@ -55,19 +54,16 @@ static int parse_request_line(const char *line, HttpRequest *req)
         if (path_len >= HTTP_PATH_MAX) path_len = HTTP_PATH_MAX - 1;
         memcpy(req->path, path_with_query, path_len);
         req->path[path_len] = '\0';
-        
+
         /* Copy query part */
-        strncpy(req->query, question_mark + 1, HTTP_PATH_MAX - 1);
-        req->query[HTTP_PATH_MAX - 1] = '\0';
+        snprintf(req->query, sizeof(req->query), "%s", question_mark + 1);
     } else {
         /* No query string */
-        strncpy(req->path, path_with_query, HTTP_PATH_MAX - 1);
-        req->path[HTTP_PATH_MAX - 1] = '\0';
+        snprintf(req->path, sizeof(req->path), "%s", path_with_query);
         req->query[0] = '\0';
     }
 
-    strncpy(req->version, version, HTTP_VERSION_MAX - 1);
-    req->version[HTTP_VERSION_MAX - 1] = '\0';
+    snprintf(req->version, sizeof(req->version), "%s", version);
 
     return 0;
 }
