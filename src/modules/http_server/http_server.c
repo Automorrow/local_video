@@ -18,7 +18,7 @@
 static volatile int server_running = 0;
 static int server_socket = -1;
 static pthread_t server_thread;
-static uint16_t server_port = 8080;
+static uint16_t server_port = 8088;
 static char web_root[512] = "./web/static";
 static pthread_mutex_t server_ready_mutex = PTHREAD_MUTEX_INITIALIZER;
 static pthread_cond_t server_ready_cond = PTHREAD_COND_INITIALIZER;
@@ -130,7 +130,7 @@ static void *server_loop(void *arg)
         log_error("Failed to bind to port %d: %s", server_port, strerror(errno));
         if (server_port != 0) {
             int found = 0;
-            for (uint16_t p = 8081; p <= 8090; p++) {
+            for (uint16_t p = 8089; p <= 8098; p++) {
                 server_port = p;
                 addr.sin_port = htons(server_port);
                 if (bind(server_socket, (struct sockaddr *)&addr, sizeof(addr)) == 0) {

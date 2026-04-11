@@ -14,7 +14,7 @@ static char scan_dir_buf[512] = "";
 static lv_config_t config = {
     .database_path = db_path_buf,
     .web_root = web_root_buf,
-    .http_port = 8080,
+    .http_port = 8088,
     .scan_directory = scan_dir_buf
 };
 
@@ -35,7 +35,7 @@ void config_reload_from_db(void)
     if (config_db_loaded) return;
 
     char port_str[16] = {0};
-    config_set_value("http_port", port_str, sizeof(port_str), "8080");
+    config_set_value("http_port", port_str, sizeof(port_str), "8088");
     config.http_port = (uint16_t)atoi(port_str);
 
     config_set_value("scan_directory", scan_dir_buf, sizeof(scan_dir_buf), "");
@@ -86,7 +86,7 @@ void config_parse_args(int argc, char *argv[])
         } else if (strcmp(argv[i], "--help") == 0 || strcmp(argv[i], "-h") == 0) {
             printf("Usage: %s [options]\n", argv[0]);
             printf("Options:\n");
-            printf("  --port PORT       Set HTTP server port (default: 8080)\n");
+            printf("  --port PORT       Set HTTP server port (default: 8088)\n");
             printf("  --video-dir DIR   Set video directory to scan (default: ./videos)\n");
             printf("  --db-path PATH    Set database file path (default: ./local_video.db)\n");
             printf("  --web-root DIR    Set web root directory (default: ./web/static)\n");
