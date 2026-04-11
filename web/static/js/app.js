@@ -653,6 +653,7 @@ async function openSettings() {
     elements.settingsModal.classList.add('active');
     elements.settingsStatus.className = 'settings-status';
     elements.settingsStatus.textContent = '';
+    document.title = 'Settings - LocalVideoServer';
 
     const config = await fetchJSON(API_BASE + '/config');
     if (config) {
@@ -669,6 +670,7 @@ async function openSettings() {
 
 function closeSettings() {
     elements.settingsModal.classList.remove('active');
+    document.title = 'LocalVideoServer';
 }
 
 async function browseDir(path) {
