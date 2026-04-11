@@ -51,8 +51,9 @@ const elements = {
     settingsBtn: document.getElementById('settingsBtn'),
     settingsModal: document.getElementById('settingsModal'),
     settingsPort: document.getElementById('settingsPort'),
-    settingsDir: document.getElementById('settingsDir'),
-    settingsBrowseBtn: document.getElementById('settingsBrowseBtn'),
+    dirBreadcrumb: document.getElementById('dirBreadcrumb'),
+    dirList: document.getElementById('dirList'),
+    dirSelectedPath: document.getElementById('dirSelectedPath'),
     settingsSaveBtn: document.getElementById('settingsSaveBtn'),
     settingsStatus: document.getElementById('settingsStatus')
 };
@@ -632,15 +633,6 @@ function initEventListeners() {
     elements.settingsBtn.addEventListener('click', openSettings);
     elements.settingsModal.querySelector('.close').addEventListener('click', closeSettings);
     elements.settingsSaveBtn.addEventListener('click', saveSettings);
-    elements.settingsBrowseBtn.addEventListener('click', () => {
-        /* Note: Browser security prevents directory picking via file input.
-         * Users need to manually type the path or copy-paste it.
-         * On Windows, the path uses backslashes. */
-        const dir = prompt('Enter the full path to your video directory:', elements.settingsDir.value);
-        if (dir) {
-            elements.settingsDir.value = dir;
-        }
-    });
 }
 
 async function init() {
@@ -655,6 +647,8 @@ async function init() {
 }
 
 /* ===== Settings ===== */
+let settingsSelectedDir = '';
+
 async function openSettings() {
     elements.settingsModal.classList.add('active');
     elements.settingsStatus.className = 'settings-status';
@@ -663,7 +657,11 @@ async function openSettings() {
     const config = await fetchJSON(API_BASE + '/config');
     if (config) {
         elements.settingsPort.value = config.port || '';
-        elements.settingsDir.value = config.scan_directory || '';
+        settingsSelectedDir = config.scan_directory || '';
+        elements.dirSelectedPath.textContent = settingsSelectedDir || 'None';
+        /* Start browsing from the drive root of current path */
+        const startPath = settingsSelectedDir ? settingsSelectedDir.substring(0, 3) : '';
+        browseDir(startPath);
     }
 }
 
@@ -671,12 +669,61 @@ function closeSettings() {
     elements.settingsModal.classList.remove('active');
 }
 
+async function browseDir(path) {
+    const url = API_BASE + '/browse?path=' + encodeURIComponent(path || '');
+    const dirs = await fetchJSON(url);
+    if (!dirs || !Array.isArray(dirs)) {
+        elements.dirList.innerHTML = '<div class="dir-empty">Unable to read directory</div>';
+        return;
+    }
+
+    /* Update breadcrumb */
+    if (path) {
+        const parts = path.split(/[/\\]/).filter(Boolean);
+        let breadcrumb = '<span class="dir-crumb" data-path="">Root</span>';
+        let accum = '';
+        for (const part of parts) {
+            accum += (accum ? '\\' : '') + part;
+            breadcrumb += ` <span class="dir-crumb-sep">›</span> <span class="dir-crumb" data-path="${accum}">${part}</span>`;
+        }
+        elements.dirBreadcrumb.innerHTML = breadcrumb;
+        elements.dirBreadcrumb.querySelectorAll('.dir-crumb').forEach(crumb => {
+            crumb.addEventListener('click', () => browseDir(crumb.dataset.path));
+        });
+    } else {
+        elements.dirBreadcrumb.innerHTML = '<span class="dir-crumb" data-path="">Root</span>';
+    }
+
+    if (dirs.length === 0) {
+        elements.dirList.innerHTML = '<div class="dir-empty">No subdirectories</div>';
+        return;
+    }
+
+    elements.dirList.innerHTML = dirs.map(d => `
+        <div class="dir-item${d.path === settingsSelectedDir ? ' selected' : ''}" data-path="${d.path}">
+            <span class="dir-icon">${d.type === 'drive' ? '💾' : '📁'}</span>
+            <span class="dir-name">${d.name}</span>
+        </div>
+    `).join('');
+
+    elements.dirList.querySelectorAll('.dir-item').forEach(item => {
+        item.addEventListener('click', () => {
+            settingsSelectedDir = item.dataset.path;
+            elements.dirSelectedPath.textContent = settingsSelectedDir;
+            elements.dirList.querySelectorAll('.dir-item').forEach(i => i.classList.remove('selected'));
+            item.classList.add('selected');
+            /* Auto-navigate into the directory */
+            browseDir(settingsSelectedDir);
+        });
+    });
+}
+
 async function saveSettings() {
     const port = parseInt(elements.settingsPort.value) || 0;
-    const dir = elements.settingsDir.value.trim();
+    const dir = settingsSelectedDir;
 
     if (!dir) {
-        showSettingsStatus('Please specify a video directory', 'error');
+        showSettingsStatus('Please select a video directory', 'error');
         return;
     }
 

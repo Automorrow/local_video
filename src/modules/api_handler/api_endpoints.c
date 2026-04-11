@@ -266,6 +266,168 @@ lv_error_t api_update_config(int client_fd, const char *body)
     return api_send_json_response(client_fd, "{\"success\":true}", 200);
 }
 
+#ifdef _WIN32
+#include <windows.h>
+
+lv_error_t api_browse_directories(int client_fd, const char *query)
+{
+    char path_buf[512] = {0};
+
+    /* Extract path from query parameter */
+    if (query) {
+        const char *path_key = strstr(query, "path=");
+        if (path_key) {
+            const char *val = path_key + 5;
+            /* URL-decode %XX */
+            size_t j = 0;
+            for (size_t i = 0; val[i] && val[i] != '&' && j < sizeof(path_buf) - 1; i++) {
+                if (val[i] == '%' && val[i+1] && val[i+2]) {
+                    char hex[3] = { val[i+1], val[i+2], 0 };
+                    path_buf[j++] = (char)strtol(hex, NULL, 16);
+                    i += 2;
+                } else if (val[i] == '+') {
+                    path_buf[j++] = ' ';
+                } else {
+                    path_buf[j++] = val[i];
+                }
+            }
+        }
+    }
+
+    response_buffer_t buf;
+    api_buffer_init(&buf);
+    api_buffer_append_str(&buf, "[");
+
+    WIN32_FIND_DATAW find_data;
+    WCHAR search_path[1024];
+    int first = 1;
+
+    if (path_buf[0] == '\0') {
+        /* List drives */
+        DWORD drives = GetLogicalDrives();
+        WCHAR drive[] = L"A:\\";
+        for (char i = 0; i < 26; i++) {
+            if (drives & (1 << i)) {
+                drive[0] = L'A' + i;
+                UINT type = GetDriveTypeW(drive);
+                if (type == DRIVE_FIXED || type == DRIVE_REMOVABLE ||
+                    type == DRIVE_REMOTE || type == DRIVE_RAMDISK) {
+                    if (!first) api_buffer_append_str(&buf, ",");
+                    first = 0;
+                    api_buffer_append_str(&buf, "{\"name\":\"");
+                    char letter[4] = { 'A' + i, ':', '\\', 0 };
+                    api_buffer_append_json_str(&buf, letter);
+                    api_buffer_append_str(&buf, "\",\"type\":\"drive\"}");
+                }
+            }
+        }
+    } else {
+        /* List subdirectories of path_buf */
+        snprintf(search_path, sizeof(search_path), "%s\\*", path_buf);
+        /* Convert to wide char */
+        MultiByteToWideChar(CP_UTF8, 0, search_path, -1, search_path, 1024);
+
+        HANDLE hFind = FindFirstFileW(search_path, &find_data);
+        if (hFind != INVALID_HANDLE_VALUE) {
+            do {
+                if (wcscmp(find_data.cFileName, L".") == 0 ||
+                    wcscmp(find_data.cFileName, L"..") == 0) continue;
+                if (!(find_data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)) continue;
+                if (find_data.dwFileAttributes & FILE_ATTRIBUTE_HIDDEN) continue;
+
+                char utf8_name[512];
+                WideCharToMultiByte(CP_UTF8, 0, find_data.cFileName, -1,
+                                   utf8_name, sizeof(utf8_name), NULL, NULL);
+
+                char full_path[1024];
+                snprintf(full_path, sizeof(full_path), "%s/%s", path_buf, utf8_name);
+                /* Normalize to backslash */
+                for (char *p = full_path; *p; p++) {
+                    if (*p == '/') *p = '\\';
+                }
+
+                if (!first) api_buffer_append_str(&buf, ",");
+                first = 0;
+                api_buffer_append_str(&buf, "{\"name\":\"");
+                api_buffer_append_json_str(&buf, utf8_name);
+                api_buffer_append_str(&buf, "\",\"path\":\"");
+                api_buffer_append_json_str(&buf, full_path);
+                api_buffer_append_str(&buf, "\"}");
+            } while (FindNextFileW(hFind, &find_data));
+            FindClose(hFind);
+        }
+    }
+
+    api_buffer_append_str(&buf, "]");
+    lv_error_t err = api_send_json_response(client_fd, buf.data, 200);
+    api_buffer_free(&buf);
+    return err;
+}
+
+#else /* POSIX */
+
+#include <dirent.h>
+#include <sys/stat.h>
+
+lv_error_t api_browse_directories(int client_fd, const char *query)
+{
+    char path_buf[512] = "/";
+
+    if (query) {
+        const char *path_key = strstr(query, "path=");
+        if (path_key) {
+            const char *val = path_key + 5;
+            size_t j = 0;
+            for (size_t i = 0; val[i] && val[i] != '&' && j < sizeof(path_buf) - 1; i++) {
+                if (val[i] == '%' && val[i+1] && val[i+2]) {
+                    char hex[3] = { val[i+1], val[i+2], 0 };
+                    path_buf[j++] = (char)strtol(hex, NULL, 16);
+                    i += 2;
+                } else if (val[i] == '+') {
+                    path_buf[j++] = ' ';
+                } else {
+                    path_buf[j++] = val[i];
+                }
+            }
+        }
+    }
+
+    response_buffer_t buf;
+    api_buffer_init(&buf);
+    api_buffer_append_str(&buf, "[");
+
+    DIR *dir = opendir(path_buf);
+    if (dir) {
+        struct dirent *entry;
+        int first = 1;
+        while ((entry = readdir(dir)) != NULL) {
+            if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) continue;
+
+            char full_path[1024];
+            snprintf(full_path, sizeof(full_path), "%s/%s", path_buf, entry->d_name);
+
+            struct stat st;
+            if (stat(full_path, &st) == 0 && S_ISDIR(st.st_mode)) {
+                if (!first) api_buffer_append_str(&buf, ",");
+                first = 0;
+                api_buffer_append_str(&buf, "{\"name\":\"");
+                api_buffer_append_json_str(&buf, entry->d_name);
+                api_buffer_append_str(&buf, "\",\"path\":\"");
+                api_buffer_append_json_str(&buf, full_path);
+                api_buffer_append_str(&buf, "\"}");
+            }
+        }
+        closedir(dir);
+    }
+
+    api_buffer_append_str(&buf, "]");
+    lv_error_t err = api_send_json_response(client_fd, buf.data, 200);
+    api_buffer_free(&buf);
+    return err;
+}
+
+#endif
+
 lv_error_t api_get_random(int client_fd)
 {
     response_buffer_t buf;

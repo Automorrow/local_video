@@ -93,11 +93,13 @@
                     </div>
                     <div class="settings-group">
                         <label for="settingsDir">Video Directory</label>
-                        <div class="settings-dir-row">
-                            <input type="text" id="settingsDir" placeholder="E:\Videos" readonly>
-                            <button id="settingsBrowseBtn">Browse</button>
+                        <div class="dir-browser">
+                            <div class="dir-breadcrumb" id="dirBreadcrumb"></div>
+                            <div class="dir-list" id="dirList"></div>
+                            <div class="dir-selected">
+                                <span>Selected: </span><strong id="dirSelectedPath">None</strong>
+                            </div>
                         </div>
-                        <small>Click "Save & Rescan" to update</small>
                     </div>
                     <div class="settings-actions">
                         <button id="settingsSaveBtn" class="primary">Save & Rescan</button>

@@ -34,6 +34,9 @@ lv_error_t api_handler_handle(int client_fd, const HttpRequest *req)
         if (strcmp(path, "config") == 0) {
             return api_get_config(client_fd);
         }
+        if (strcmp(path, "browse") == 0) {
+            return api_browse_directories(client_fd, req->query);
+        }
     } else if (strcmp(req->method, "POST") == 0) {
         char *body = api_read_request_body(client_fd);
         if (strcmp(path, "history") == 0) {
