@@ -1,5 +1,6 @@
 #include "api_handler_internal.h"
 #include "../video_scanner/video_scanner.h"
+#include "../config/config.h"
 #include "../../shared/log/log.h"
 #include "../../include/platform.h"
 #include <stdio.h>
@@ -175,6 +176,94 @@ lv_error_t api_get_videos(int client_fd, const char *query)
     err = api_send_json_response(client_fd, buf.data, 200);
     api_buffer_free(&buf);
     return err;
+}
+
+lv_error_t api_get_config(int client_fd)
+{
+    const lv_config_t *cfg = config_get();
+    char response[1024];
+    snprintf(response, sizeof(response),
+        "{\"port\":%d,\"scan_directory\":\"",
+        (int)cfg->http_port);
+
+    /* Build JSON with escaped scan_directory */
+    response_buffer_t buf;
+    api_buffer_init(&buf);
+    api_buffer_append_str(&buf, response);
+    api_buffer_append_json_str(&buf, cfg->scan_directory);
+    api_buffer_append_str(&buf, "\",\"video_count\":0}");
+
+    lv_error_t err = api_send_json_response(client_fd, buf.data, 200);
+    api_buffer_free(&buf);
+    return err;
+}
+
+lv_error_t api_update_config(int client_fd, const char *body)
+{
+    if (!body) {
+        return api_send_json_response(client_fd,
+            "{\"success\":false,\"error\":\"Empty body\"}", 400);
+    }
+
+    /* Parse JSON manually (no json library for parsing) */
+    char port_str[16] = {0};
+    char dir_str[512] = {0};
+
+    /* Extract "port" field */
+    const char *port_key = strstr(body, "\"port\"");
+    if (port_key) {
+        const char *colon = strchr(port_key + 6, ':');
+        if (colon) {
+            int i = 0;
+            const char *p = colon + 1;
+            while (*p && *p != ',' && *p != '}' && i < 15) {
+                port_str[i++] = *p++;
+            }
+            port_str[i] = '\0';
+        }
+    }
+
+    /* Extract "scan_directory" field */
+    const char *dir_key = strstr(body, "\"scan_directory\"");
+    if (dir_key) {
+        const char *colon = strchr(dir_key + 16, ':');
+        if (colon) {
+            const char *start = strchr(colon, '"');
+            if (start) {
+                start++;
+                const char *end = strchr(start, '"');
+                if (end) {
+                    size_t len = (size_t)(end - start);
+                    if (len >= sizeof(dir_str)) len = sizeof(dir_str) - 1;
+                    memcpy(dir_str, start, len);
+                    dir_str[len] = '\0';
+                }
+            }
+        }
+    }
+
+    lv_error_t err = LV_OK;
+
+    if (port_str[0]) {
+        int port = atoi(port_str);
+        if (port > 0 && port <= 65535) {
+            err = config_set_port((uint16_t)port);
+            if (err != LV_OK) {
+                return api_send_json_response(client_fd,
+                    "{\"success\":false,\"error\":\"Invalid port\"}", 400);
+            }
+        }
+    }
+
+    if (dir_str[0]) {
+        err = config_set_scan_directory(dir_str);
+        if (err != LV_OK) {
+            return api_send_json_response(client_fd,
+                "{\"success\":false,\"error\":\"Invalid directory\"}", 400);
+        }
+    }
+
+    return api_send_json_response(client_fd, "{\"success\":true}", 200);
 }
 
 lv_error_t api_get_random(int client_fd)

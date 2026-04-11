@@ -42,7 +42,14 @@ const elements = {
     resumeVideoTitle: document.getElementById('resumeVideoTitle'),
     resumePosition: document.getElementById('resumePosition'),
     resumeFromBeginning: document.getElementById('resumeFromBeginning'),
-    resumeFromPosition: document.getElementById('resumeFromPosition')
+    resumeFromPosition: document.getElementById('resumeFromPosition'),
+    settingsBtn: document.getElementById('settingsBtn'),
+    settingsModal: document.getElementById('settingsModal'),
+    settingsPort: document.getElementById('settingsPort'),
+    settingsDir: document.getElementById('settingsDir'),
+    settingsBrowseBtn: document.getElementById('settingsBrowseBtn'),
+    settingsSaveBtn: document.getElementById('settingsSaveBtn'),
+    settingsStatus: document.getElementById('settingsStatus')
 };
 
 function showToast(message, type = 'info') {
@@ -552,12 +559,77 @@ function initEventListeners() {
             addToHistory(state.currentVideo.id, position);
         }
     });
+
+    /* Settings */
+    elements.settingsBtn.addEventListener('click', openSettings);
+    elements.settingsModal.querySelector('.close').addEventListener('click', closeSettings);
+    elements.settingsSaveBtn.addEventListener('click', saveSettings);
+    elements.settingsBrowseBtn.addEventListener('click', () => {
+        /* Note: Browser security prevents directory picking via file input.
+         * Users need to manually type the path or copy-paste it.
+         * On Windows, the path uses backslashes. */
+        const dir = prompt('Enter the full path to your video directory:', elements.settingsDir.value);
+        if (dir) {
+            elements.settingsDir.value = dir;
+        }
+    });
 }
 
 async function init() {
     initEventListeners();
     await loadFavorites();
     await loadVideos();
+
+    /* Auto-open settings if URL has #settings */
+    if (window.location.hash === '#settings') {
+        openSettings();
+    }
+}
+
+/* ===== Settings ===== */
+async function openSettings() {
+    elements.settingsModal.classList.add('active');
+    elements.settingsStatus.className = 'settings-status';
+    elements.settingsStatus.textContent = '';
+
+    const config = await fetchJSON(API_BASE + '/config');
+    if (config) {
+        elements.settingsPort.value = config.port || '';
+        elements.settingsDir.value = config.scan_directory || '';
+    }
+}
+
+function closeSettings() {
+    elements.settingsModal.classList.remove('active');
+}
+
+async function saveSettings() {
+    const port = parseInt(elements.settingsPort.value) || 0;
+    const dir = elements.settingsDir.value.trim();
+
+    if (!dir) {
+        showSettingsStatus('Please specify a video directory', 'error');
+        return;
+    }
+
+    const body = JSON.stringify({ port: port, scan_directory: dir });
+    const result = await fetchJSON(API_BASE + '/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: body
+    });
+
+    if (result && result.success) {
+        showSettingsStatus('Settings saved! Rescanning videos...', 'success');
+        setTimeout(() => loadVideos(), 500);
+    } else {
+        showSettingsStatus('Failed to save settings', 'error');
+    }
+}
+
+function showSettingsStatus(msg, type) {
+    elements.settingsStatus.textContent = msg;
+    elements.settingsStatus.className = 'settings-status ' + type;
 }
 
 init();

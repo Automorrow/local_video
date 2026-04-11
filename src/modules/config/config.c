@@ -5,11 +5,15 @@
 #include <stdlib.h>
 #include <string.h>
 
+static char db_path_buf[512] = "./local_video.db";
+static char web_root_buf[512] = "./web/static";
+static char scan_dir_buf[512] = "./videos";
+
 static lv_config_t config = {
-    .database_path = "./local_video.db",
-    .web_root = "./web/static",
+    .database_path = db_path_buf,
+    .web_root = web_root_buf,
     .http_port = 8080,
-    .scan_directory = "./videos"
+    .scan_directory = scan_dir_buf
 };
 
 void config_parse_args(int argc, char *argv[])
@@ -25,22 +29,19 @@ void config_parse_args(int argc, char *argv[])
             }
             i++;
         } else if (strcmp(argv[i], "--video-dir") == 0 && i + 1 < argc) {
-            static char scan_dir[256];
-            strncpy(scan_dir, argv[i + 1], sizeof(scan_dir) - 1);
-            scan_dir[sizeof(scan_dir) - 1] = '\0';
-            config.scan_directory = scan_dir;
+            strncpy(scan_dir_buf, argv[i + 1], sizeof(scan_dir_buf) - 1);
+            scan_dir_buf[sizeof(scan_dir_buf) - 1] = '\0';
+            config.scan_directory = scan_dir_buf;
             i++;
         } else if (strcmp(argv[i], "--db-path") == 0 && i + 1 < argc) {
-            static char db_path[256];
-            strncpy(db_path, argv[i + 1], sizeof(db_path) - 1);
-            db_path[sizeof(db_path) - 1] = '\0';
-            config.database_path = db_path;
+            strncpy(db_path_buf, argv[i + 1], sizeof(db_path_buf) - 1);
+            db_path_buf[sizeof(db_path_buf) - 1] = '\0';
+            config.database_path = db_path_buf;
             i++;
         } else if (strcmp(argv[i], "--web-root") == 0 && i + 1 < argc) {
-            static char web_root[256];
-            strncpy(web_root, argv[i + 1], sizeof(web_root) - 1);
-            web_root[sizeof(web_root) - 1] = '\0';
-            config.web_root = web_root;
+            strncpy(web_root_buf, argv[i + 1], sizeof(web_root_buf) - 1);
+            web_root_buf[sizeof(web_root_buf) - 1] = '\0';
+            config.web_root = web_root_buf;
             i++;
         } else if (strcmp(argv[i], "--help") == 0 || strcmp(argv[i], "-h") == 0) {
             printf("Usage: %s [options]\n", argv[0]);
@@ -60,6 +61,24 @@ void config_parse_args(int argc, char *argv[])
 const lv_config_t *config_get(void)
 {
     return &config;
+}
+
+lv_error_t config_set_scan_directory(const char *dir)
+{
+    if (!dir || dir[0] == '\0') return LV_ERROR_INVALID_ARG;
+    strncpy(scan_dir_buf, dir, sizeof(scan_dir_buf) - 1);
+    scan_dir_buf[sizeof(scan_dir_buf) - 1] = '\0';
+    config.scan_directory = scan_dir_buf;
+    log_info("Config updated: scan_directory = %s", scan_dir_buf);
+    return LV_OK;
+}
+
+lv_error_t config_set_port(uint16_t port)
+{
+    if (port == 0) return LV_ERROR_INVALID_ARG;
+    config.http_port = port;
+    log_info("Config updated: http_port = %d", port);
+    return LV_OK;
 }
 
 static void config_init(void)

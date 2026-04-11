@@ -31,6 +31,9 @@ lv_error_t api_handler_handle(int client_fd, const HttpRequest *req)
         if (strcmp(path, "blacklist") == 0) {
             return api_get_blacklist(client_fd);
         }
+        if (strcmp(path, "config") == 0) {
+            return api_get_config(client_fd);
+        }
     } else if (strcmp(req->method, "POST") == 0) {
         char *body = api_read_request_body(client_fd);
         if (strcmp(path, "history") == 0) {
@@ -45,6 +48,11 @@ lv_error_t api_handler_handle(int client_fd, const HttpRequest *req)
         }
         if (strcmp(path, "blacklist") == 0) {
             lv_error_t err = api_add_blacklist(client_fd, body);
+            free(body);
+            return err;
+        }
+        if (strcmp(path, "config") == 0) {
+            lv_error_t err = api_update_config(client_fd, body);
             free(body);
             return err;
         }

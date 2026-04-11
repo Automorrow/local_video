@@ -6,6 +6,14 @@
 #include "include/platform.h"
 #include <stdio.h>
 #include <signal.h>
+#include <stdlib.h>
+
+#ifdef _WIN32
+#include <windows.h>
+#include <shellapi.h>
+#else
+#include <unistd.h>
+#endif
 
 static volatile int running = 1;
 
@@ -13,6 +21,18 @@ static void signal_handler(int sig)
 {
     (void)sig;
     running = 0;
+}
+
+static void open_browser(const char *url)
+{
+#ifdef _WIN32
+    ShellExecuteA(NULL, "open", url, NULL, NULL, SW_SHOWNORMAL);
+#else
+    char cmd[512];
+    snprintf(cmd, sizeof(cmd), "xdg-open %s &", url);
+    int ret = system(cmd);
+    (void)ret;
+#endif
 }
 
 int main(int argc, char *argv[])
@@ -46,6 +66,15 @@ int main(int argc, char *argv[])
     module_run_all();
 
     log_info("Server is running... Press Ctrl+C to stop.");
+
+    /* Auto-open browser on first launch */
+    {
+        const lv_config_t *cfg = config_get();
+        char url[256];
+        snprintf(url, sizeof(url), "http://127.0.0.1:%d/#settings", (int)cfg->http_port);
+        log_info("Opening browser: %s", url);
+        open_browser(url);
+    }
 
     /* Main loop - keep the server running */
     while (running) {

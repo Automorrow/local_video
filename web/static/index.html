@@ -22,6 +22,7 @@
                 <button id="favoritesBtn">Favorites</button>
                 <button id="blacklistBtn">Blacklist</button>
                 <button id="allVideosBtn">All Videos</button>
+                <button id="settingsBtn" class="settings-btn">⚙</button>
             </div>
         </header>
         
@@ -77,6 +78,32 @@
                     <button id="addBlacklistBtn">Add</button>
                 </div>
                 <div id="blacklistList"></div>
+            </div>
+        </div>
+
+        <div id="settingsModal" class="modal">
+            <div class="modal-content">
+                <span class="close">&times;</span>
+                <h2>Settings</h2>
+                <div class="settings-form">
+                    <div class="settings-group">
+                        <label for="settingsPort">HTTP Port</label>
+                        <input type="number" id="settingsPort" min="1" max="65535" placeholder="8080">
+                        <small>Requires restart to take effect</small>
+                    </div>
+                    <div class="settings-group">
+                        <label for="settingsDir">Video Directory</label>
+                        <div class="settings-dir-row">
+                            <input type="text" id="settingsDir" placeholder="E:\Videos" readonly>
+                            <button id="settingsBrowseBtn">Browse</button>
+                        </div>
+                        <small>Click "Save & Rescan" to update</small>
+                    </div>
+                    <div class="settings-actions">
+                        <button id="settingsSaveBtn" class="primary">Save & Rescan</button>
+                    </div>
+                    <div id="settingsStatus" class="settings-status"></div>
+                </div>
             </div>
         </div>
         
