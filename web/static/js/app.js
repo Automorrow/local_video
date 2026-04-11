@@ -738,7 +738,16 @@ async function saveSettings() {
         showSettingsStatus('Settings saved! Rescanning videos...', 'success');
         setTimeout(() => {
             closeSettings();
-            loadVideos();
+            /* Poll for videos until scan completes */
+            let attempts = 0;
+            const poll = async () => {
+                await loadVideos();
+                attempts++;
+                if (state.videos.length === 0 && attempts < 20) {
+                    setTimeout(poll, 1000);
+                }
+            };
+            poll();
         }, 500);
     } else {
         showSettingsStatus('Failed to save settings', 'error');
