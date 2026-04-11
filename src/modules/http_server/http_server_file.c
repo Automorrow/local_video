@@ -74,16 +74,20 @@ lv_error_t http_server_send_file_response(int client_fd,
         return http_response_send_error(client_fd, 500, "Server error");
     }
 
-    /* Get file size */
-    if (fseek(fp, 0, SEEK_END) != 0) {
-        log_error("Failed to seek file '%s': errno=%d", file_path, errno);
+    /* Get file size (use 64-bit functions for files > 2GB) */
+#ifdef _WIN32
+    file_size = (int64_t)_ftelli64(fp);
+#else
+    file_size = (int64_t)ftello(fp);
+#endif
+    if (file_size < 0) {
+        log_error("Failed to get size of '%s'", file_path);
         fclose(fp);
         return http_response_send_error(client_fd, 500, "Server error");
     }
-    file_size = (int64_t)ftell(fp);
     fseek(fp, 0, SEEK_SET);
 
-    log_info("Serving file '%s' (size=%ld bytes)", file_path, (long)file_size);
+    log_info("Serving file '%s' (size=%lld bytes)", file_path, (long long)file_size);
 
     actual_start = 0;
     actual_end = file_size > 0 ? file_size - 1 : 0;
@@ -121,7 +125,11 @@ lv_error_t http_server_send_file_response(int client_fd,
             return LV_ERROR_IO;
         }
 
-        fseek(fp, actual_start, SEEK_SET);
+#ifdef _WIN32
+        _fseeki64(fp, actual_start, SEEK_SET);
+#else
+        fseeko(fp, actual_start, SEEK_SET);
+#endif
 
         while (content_length > 0) {
             size_t to_read = content_length > (int64_t)sizeof(buffer) ?
