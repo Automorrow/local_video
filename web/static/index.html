@@ -33,7 +33,14 @@
                 <div class="spinner"></div>
                 <p>Loading...</p>
             </div>
-            <div id="emptyMessage" class="empty" style="display: none;">No videos found</div>
+            <div id="emptyMessage" class="empty" style="display: none;">
+                <div class="empty-state">
+                    <div class="empty-icon">📁</div>
+                    <h3>No videos found</h3>
+                    <p>Select a video folder and we’ll scan it for you.</p>
+                    <button id="emptySettingsBtn" class="primary">⚙️ Set Video Directory</button>
+                </div>
+            </div>
         </main>
         
         <div id="videoModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="videoModalTitle">

@@ -53,6 +53,7 @@ const elements = {
     resumeFromBeginning: document.getElementById('resumeFromBeginning'),
     resumeFromPosition: document.getElementById('resumeFromPosition'),
     settingsBtn: document.getElementById('settingsBtn'),
+    emptySettingsBtn: document.getElementById('emptySettingsBtn'),
     settingsModal: document.getElementById('settingsModal'),
     settingsPort: document.getElementById('settingsPort'),
     dirBreadcrumb: document.getElementById('dirBreadcrumb'),
@@ -725,6 +726,9 @@ function initEventListeners() {
 
     /* Settings */
     elements.settingsBtn.addEventListener('click', openSettings);
+    if (elements.emptySettingsBtn) {
+        elements.emptySettingsBtn.addEventListener('click', openSettings);
+    }
     elements.settingsSaveBtn.addEventListener('click', () => {
         if (state.savingSettings) return;
         saveSettings();
@@ -787,7 +791,7 @@ async function browseDir(path) {
     const url = API_BASE + '/browse?path=' + encodeURIComponent(path);
     const dirs = await fetchJSON(url);
     if (!dirs || !Array.isArray(dirs)) {
-        elements.dirList.innerHTML = '<div class="dir-empty">Unable to read directory</div>';
+        elements.dirList.innerHTML = '<div class="dir-empty">Unable to read directory. Please check the path or permissions.</div>';
         return;
     }
 
@@ -808,16 +812,27 @@ async function browseDir(path) {
         elements.dirBreadcrumb.innerHTML = '<span class="dir-crumb" data-path="">Root</span>';
     }
 
-    if (dirs.length === 0) {
-        elements.dirList.innerHTML = '<div class="dir-empty">No subdirectories</div>';
-        return;
+    let dirHtml = '';
+    if (path) {
+        const parentSel = path === settingsSelectedDir ? ' selected' : '';
+        dirHtml += '<div class="dir-item' + parentSel + '" data-path="' + escapeHtml(path) + '"><span class="dir-icon">📂</span><span class="dir-name">Use this folder</span></div>';
     }
 
-    elements.dirList.innerHTML = dirs.map(d => {
-        const icon = d.type === 'drive' ? '💾' : '📁';
-        const sel = d.path === settingsSelectedDir ? ' selected' : '';
-        return '<div class="dir-item' + sel + '" data-path="' + escapeHtml(d.path) + '"><span class="dir-icon">' + icon + '</span><span class="dir-name">' + escapeHtml(d.name) + '</span></div>';
-    }).join('');
+    if (dirs.length === 0) {
+        if (!path) {
+            elements.dirList.innerHTML = '<div class="dir-empty">No subdirectories</div>';
+            return;
+        }
+        /* Keep only the "Use this folder" row */
+    } else {
+        dirHtml += dirs.map(d => {
+            const icon = d.type === 'drive' ? '💾' : '📁';
+            const sel = d.path === settingsSelectedDir ? ' selected' : '';
+            return '<div class="dir-item' + sel + '" data-path="' + escapeHtml(d.path) + '"><span class="dir-icon">' + icon + '</span><span class="dir-name">' + escapeHtml(d.name) + '</span></div>';
+        }).join('');
+    }
+
+    elements.dirList.innerHTML = dirHtml;
 
     elements.dirList.querySelectorAll('.dir-item').forEach(item => {
         item.addEventListener('click', () => {
