@@ -51,10 +51,8 @@ const elements = {
     settingsBtn: document.getElementById('settingsBtn'),
     settingsModal: document.getElementById('settingsModal'),
     settingsPort: document.getElementById('settingsPort'),
-    dirBreadcrumb: document.getElementById('dirBreadcrumb'),
-    dirList: document.getElementById('dirList'),
-    dirSelectedPath: document.getElementById('dirSelectedPath'),
     dirPickerBtn: document.getElementById('dirPickerBtn'),
+    dirSelectedPath: document.getElementById('dirSelectedPath'),
     settingsSaveBtn: document.getElementById('settingsSaveBtn'),
     settingsStatus: document.getElementById('settingsStatus')
 };
@@ -660,10 +658,7 @@ async function openSettings() {
     if (config) {
         elements.settingsPort.value = config.port || '';
         settingsSelectedDir = config.scan_directory || '';
-        elements.dirSelectedPath.textContent = settingsSelectedDir || 'None';
-        /* Start browsing from the drive root of current path */
-        const startPath = settingsSelectedDir ? settingsSelectedDir.substring(0, 3) : '';
-        browseDir(startPath);
+        elements.dirSelectedPath.textContent = settingsSelectedDir || 'Not selected';
     }
 }
 
@@ -703,10 +698,7 @@ async function pickDirectory() {
         if (result && result.success && result.path) {
             settingsSelectedDir = result.path;
             elements.dirSelectedPath.textContent = settingsSelectedDir;
-            elements.dirList.querySelectorAll('.dir-item').forEach(i => i.classList.remove('selected'));
             showSettingsStatus('Directory selected: ' + settingsSelectedDir, 'success');
-            /* Navigate browser to show the selected directory */
-            browseDir(settingsSelectedDir);
         } else {
             showSettingsStatus('Could not resolve directory path. Try browsing manually below.', 'error');
         }
@@ -715,55 +707,6 @@ async function pickDirectory() {
             showSettingsStatus('Error: ' + e.message, 'error');
         }
     }
-}
-
-async function browseDir(path) {
-    const url = API_BASE + '/browse?path=' + encodeURIComponent(path || '');
-    const dirs = await fetchJSON(url);
-    if (!dirs || !Array.isArray(dirs)) {
-        elements.dirList.innerHTML = '<div class="dir-empty">Unable to read directory</div>';
-        return;
-    }
-
-    /* Update breadcrumb */
-    if (path) {
-        const parts = path.split(/[/\\]/).filter(Boolean);
-        let breadcrumb = '<span class="dir-crumb" data-path="">Root</span>';
-        let accum = '';
-        for (const part of parts) {
-            accum += (accum ? '\\' : '') + part;
-            breadcrumb += ` <span class="dir-crumb-sep">›</span> <span class="dir-crumb" data-path="${accum}">${part}</span>`;
-        }
-        elements.dirBreadcrumb.innerHTML = breadcrumb;
-        elements.dirBreadcrumb.querySelectorAll('.dir-crumb').forEach(crumb => {
-            crumb.addEventListener('click', () => browseDir(crumb.dataset.path));
-        });
-    } else {
-        elements.dirBreadcrumb.innerHTML = '<span class="dir-crumb" data-path="">Root</span>';
-    }
-
-    if (dirs.length === 0) {
-        elements.dirList.innerHTML = '<div class="dir-empty">No subdirectories</div>';
-        return;
-    }
-
-    elements.dirList.innerHTML = dirs.map(d => `
-        <div class="dir-item${d.path === settingsSelectedDir ? ' selected' : ''}" data-path="${d.path}">
-            <span class="dir-icon">${d.type === 'drive' ? '💾' : '📁'}</span>
-            <span class="dir-name">${d.name}</span>
-        </div>
-    `).join('');
-
-    elements.dirList.querySelectorAll('.dir-item').forEach(item => {
-        item.addEventListener('click', () => {
-            settingsSelectedDir = item.dataset.path;
-            elements.dirSelectedPath.textContent = settingsSelectedDir;
-            elements.dirList.querySelectorAll('.dir-item').forEach(i => i.classList.remove('selected'));
-            item.classList.add('selected');
-            /* Auto-navigate into the directory */
-            browseDir(settingsSelectedDir);
-        });
-    });
 }
 
 async function saveSettings() {

@@ -490,100 +490,27 @@ video {
     color: var(--text-muted);
     font-size: 12px;
 }
-.dir-browser {
-    border: 1px solid var(--text-muted);
-    border-radius: 6px;
-    overflow: hidden;
-}
-.dir-toolbar {
+/* Settings - Directory Picker */
+.dir-picker-row {
     display: flex;
     align-items: center;
-    gap: 10px;
-    padding: 8px 12px;
-    background: var(--bg-tertiary);
-    border-bottom: 1px solid var(--text-muted);
+    gap: 12px;
 }
 .dir-picker-btn {
-    padding: 6px 14px;
+    padding: 8px 16px;
     background: var(--accent);
     border: none;
-    border-radius: 4px;
+    border-radius: 6px;
     color: white;
-    font-size: 13px;
+    font-size: 14px;
     cursor: pointer;
     white-space: nowrap;
 }
 .dir-picker-btn:hover {
     background: var(--accent-hover);
 }
-.dir-toolbar-hint {
-    font-size: 12px;
-    color: var(--text-muted);
-}
-.dir-breadcrumb {
-    padding: 8px 12px;
-    background: var(--bg-tertiary);
-    border-bottom: 1px solid var(--text-muted);
+.dir-selected-text {
     font-size: 13px;
-    color: var(--text-secondary);
-    line-height: 1.6;
-}
-.dir-crumb {
-    color: var(--accent);
-    cursor: pointer;
-}
-.dir-crumb:hover {
-    text-decoration: underline;
-}
-.dir-crumb-sep {
-    margin: 0 4px;
-    color: var(--text-muted);
-}
-.dir-list {
-    max-height: 300px;
-    overflow-y: auto;
-    background: var(--bg-primary);
-}
-.dir-item {
-    display: flex;
-    align-items: center;
-    padding: 8px 12px;
-    cursor: pointer;
-    border-bottom: 1px solid var(--bg-tertiary);
-    transition: background 0.15s;
-}
-.dir-item:hover {
-    background: var(--bg-tertiary);
-}
-.dir-item.selected {
-    background: rgba(52, 152, 219, 0.15);
-    border-left: 3px solid var(--accent);
-}
-.dir-icon {
-    margin-right: 8px;
-    font-size: 16px;
-}
-.dir-name {
-    font-size: 14px;
-    color: var(--text-primary);
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-.dir-empty {
-    padding: 20px;
-    text-align: center;
-    color: var(--text-muted);
-    font-size: 13px;
-}
-.dir-selected {
-    padding: 8px 12px;
-    background: var(--bg-tertiary);
-    border-top: 1px solid var(--text-muted);
-    font-size: 13px;
-    color: var(--text-secondary);
-}
-.dir-selected strong {
     color: var(--text-primary);
     word-break: break-all;
 }
