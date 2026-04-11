@@ -93,9 +93,12 @@
                     </div>
                     <div class="settings-group">
                         <label for="settingsDir">Video Directory</label>
-                        <div class="dir-picker-row">
-                            <button id="dirPickerBtn" class="dir-picker-btn">📂 Select Folder</button>
-                            <strong id="dirSelectedPath" class="dir-selected-text">Not selected</strong>
+                        <div class="dir-browser">
+                            <div class="dir-breadcrumb" id="dirBreadcrumb"></div>
+                            <div class="dir-list" id="dirList"></div>
+                            <div class="dir-selected">
+                                <span>Selected: </span><strong id="dirSelectedPath">None</strong>
+                            </div>
                         </div>
                     </div>
                     <div class="settings-actions">

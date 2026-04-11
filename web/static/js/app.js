@@ -51,7 +51,8 @@ const elements = {
     settingsBtn: document.getElementById('settingsBtn'),
     settingsModal: document.getElementById('settingsModal'),
     settingsPort: document.getElementById('settingsPort'),
-    dirPickerBtn: document.getElementById('dirPickerBtn'),
+    dirBreadcrumb: document.getElementById('dirBreadcrumb'),
+    dirList: document.getElementById('dirList'),
     dirSelectedPath: document.getElementById('dirSelectedPath'),
     settingsSaveBtn: document.getElementById('settingsSaveBtn'),
     settingsStatus: document.getElementById('settingsStatus')
@@ -632,7 +633,6 @@ function initEventListeners() {
     elements.settingsBtn.addEventListener('click', openSettings);
     elements.settingsModal.querySelector('.close').addEventListener('click', closeSettings);
     elements.settingsSaveBtn.addEventListener('click', saveSettings);
-    elements.dirPickerBtn.addEventListener('click', pickDirectory);
 }
 
 async function init() {
@@ -658,7 +658,9 @@ async function openSettings() {
     if (config) {
         elements.settingsPort.value = config.port || '';
         settingsSelectedDir = config.scan_directory || '';
-        elements.dirSelectedPath.textContent = settingsSelectedDir || 'Not selected';
+        elements.dirSelectedPath.textContent = settingsSelectedDir || 'None';
+        const startPath = settingsSelectedDir ? settingsSelectedDir.substring(0, 3) : '';
+        browseDir(startPath);
     }
 }
 
@@ -666,47 +668,50 @@ function closeSettings() {
     elements.settingsModal.classList.remove('active');
 }
 
-async function pickDirectory() {
-    if (!window.showDirectoryPicker) {
-        showSettingsStatus('Your browser does not support directory picking. Use the browser below instead.', 'error');
+async function browseDir(path) {
+    const url = API_BASE + '/browse?path=' + encodeURIComponent(path || '');
+    const dirs = await fetchJSON(url);
+    if (!dirs || !Array.isArray(dirs)) {
+        elements.dirList.innerHTML = '<div class="dir-empty">Unable to read directory</div>';
         return;
     }
 
-    try {
-        const dirHandle = await window.showDirectoryPicker();
-        const dirName = dirHandle.name;
-
-        /* Collect child names (both files and directories) for precise matching */
-        const childNames = [];
-        try {
-            for await (const entry of dirHandle.values()) {
-                if (childNames.length < 20) {
-                    childNames.push(entry.name);
-                }
-            }
-        } catch (e) { /* permission denied for some children, ignore */ }
-
-        showSettingsStatus('Resolving path...', 'success');
-
-        /* Send directory name + children to backend for precise resolution */
-        const result = await fetchJSON(API_BASE + '/resolve-dir', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ name: dirName, children: childNames })
+    if (path) {
+        const parts = path.split(/[/\\]/).filter(Boolean);
+        let breadcrumb = '<span class="dir-crumb" data-path="">Root</span>';
+        let accum = '';
+        for (const part of parts) {
+            accum += (accum ? '\\' : '') + part;
+            breadcrumb += ' <span class="dir-crumb-sep">›</span> <span class="dir-crumb" data-path="' + accum + '">' + part + '</span>';
+        }
+        elements.dirBreadcrumb.innerHTML = breadcrumb;
+        elements.dirBreadcrumb.querySelectorAll('.dir-crumb').forEach(crumb => {
+            crumb.addEventListener('click', () => browseDir(crumb.dataset.path));
         });
-
-        if (result && result.success && result.path) {
-            settingsSelectedDir = result.path;
-            elements.dirSelectedPath.textContent = settingsSelectedDir;
-            showSettingsStatus('Directory selected: ' + settingsSelectedDir, 'success');
-        } else {
-            showSettingsStatus('Could not resolve directory path. Try browsing manually below.', 'error');
-        }
-    } catch (e) {
-        if (e.name !== 'AbortError') {
-            showSettingsStatus('Error: ' + e.message, 'error');
-        }
+    } else {
+        elements.dirBreadcrumb.innerHTML = '<span class="dir-crumb" data-path="">Root</span>';
     }
+
+    if (dirs.length === 0) {
+        elements.dirList.innerHTML = '<div class="dir-empty">No subdirectories</div>';
+        return;
+    }
+
+    elements.dirList.innerHTML = dirs.map(d => {
+        const icon = d.type === 'drive' ? '💾' : '📁';
+        const sel = d.path === settingsSelectedDir ? ' selected' : '';
+        return '<div class="dir-item' + sel + '" data-path="' + d.path + '"><span class="dir-icon">' + icon + '</span><span class="dir-name">' + d.name + '</span></div>';
+    }).join('');
+
+    elements.dirList.querySelectorAll('.dir-item').forEach(item => {
+        item.addEventListener('click', () => {
+            settingsSelectedDir = item.dataset.path;
+            elements.dirSelectedPath.textContent = settingsSelectedDir;
+            elements.dirList.querySelectorAll('.dir-item').forEach(i => i.classList.remove('selected'));
+            item.classList.add('selected');
+            browseDir(settingsSelectedDir);
+        });
+    });
 }
 
 async function saveSettings() {
