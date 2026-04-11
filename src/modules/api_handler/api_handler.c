@@ -7,8 +7,11 @@
 /* Main API handler */
 lv_error_t api_handler_handle(int client_fd, const HttpRequest *req)
 {
+    if (strlen(req->path) < 5) {
+        return api_send_json_response(client_fd, "{\"error\":\"Not found\"}", 404);
+    }
     const char *path = req->path + 5; /* Skip "/api/" */
-    
+
     if (strcmp(req->method, "GET") == 0) {
         if (strcmp(path, "videos") == 0) {
             return api_get_videos(client_fd, req->query[0] ? req->query : NULL);
@@ -38,7 +41,7 @@ lv_error_t api_handler_handle(int client_fd, const HttpRequest *req)
             return api_browse_directories(client_fd, req->query);
         }
     } else if (strcmp(req->method, "POST") == 0) {
-        char *body = api_read_request_body(client_fd);
+        char *body = api_read_request_body(client_fd, req->content_length);
         if (strcmp(path, "history") == 0) {
             lv_error_t err = api_add_history(client_fd, body);
             free(body);

@@ -83,13 +83,13 @@ lv_error_t api_send_json_response(int client_fd, const char *json, int status_co
     header_len = snprintf(header, sizeof(header),
                           "HTTP/1.1 %d %s\r\n"
                           "Content-Type: application/json\r\n"
-                          "Content-Length: %ld\r\n"
+                          "Content-Length: %zu\r\n"
                           "Connection: close\r\n"
                           "Access-Control-Allow-Origin: *\r\n"
                           "\r\n",
                           status_code,
                           resp.reason,
-                          (long)strlen(json));
+                          strlen(json));
 
     w1 = net_write(client_fd, header, (size_t)header_len);
     w2 = net_write(client_fd, json, strlen(json));

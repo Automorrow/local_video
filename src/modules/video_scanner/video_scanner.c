@@ -27,6 +27,7 @@ pthread_mutex_t event_mutex = PTHREAD_MUTEX_INITIALIZER;
 #endif
 
 volatile int scan_in_progress = 0;
+pthread_mutex_t scan_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 static const char *video_extensions[] = {
     ".mp4", ".webm", ".mkv", ".avi", ".mov", ".wmv", ".flv", NULL

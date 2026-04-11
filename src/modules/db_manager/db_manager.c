@@ -1,8 +1,10 @@
 #include "db_manager_internal.h"
 #include "../../shared/module/module.h"
 #include "../../shared/log/log.h"
+#include "../config/config.h"
 #include <stdlib.h>
 #include <string.h>
+#include <inttypes.h>
 
 sqlite3 *g_db = NULL;
 lv_mutex_t g_mutex;
@@ -94,12 +96,16 @@ static void db_manager_init_internal(void) {
     }
 
     g_initialized = 1;
-    db_manager_init("./local_video.db");
+    const char *db_path = config_get()->database_path;
+    if (!db_path || db_path[0] == '\0') {
+        db_path = "./local_video.db";
+    }
+    db_manager_init(db_path);
 
     /* Log database video count for diagnostics */
     int64_t count = 0;
     db_manager_video_count(&count);
-    log_info("Database initialized with %ld videos", (long)count);
+    log_info("Database initialized with %" PRId64 " videos", count);
 }
 
 MODULE_INIT(db_manager_init_internal, "db_manager");

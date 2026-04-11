@@ -12,7 +12,7 @@ typedef struct {
     size_t capacity;
 } response_buffer_t;
 
-char *api_read_request_body(int client_fd);
+char *api_read_request_body(int client_fd, int64_t content_length);
 
 void api_buffer_init(response_buffer_t *buf);
 void api_buffer_free(response_buffer_t *buf);

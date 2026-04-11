@@ -3,24 +3,35 @@
 #include <stdlib.h>
 #include <string.h>
 
-char *api_read_request_body(int client_fd)
+char *api_read_request_body(int client_fd, int64_t content_length)
 {
-    char *body = malloc(4096);
-    ssize_t n;
+    if (content_length <= 0) {
+        return NULL;
+    }
 
+#define MAX_BODY_SIZE 65536
+    int64_t to_read = content_length;
+    if (to_read > MAX_BODY_SIZE) {
+        to_read = MAX_BODY_SIZE;
+    }
+
+    char *body = malloc((size_t)to_read + 1);
     if (!body) {
         return NULL;
     }
 
-    n = recv(client_fd, body, 4095, 0);
-    if (n > 0) {
-        body[n] = '\0';
-    } else {
-        free(body);
-        body = NULL;
+    int64_t received = 0;
+    while (received < to_read) {
+        ssize_t n = recv(client_fd, body + received, (size_t)(to_read - received), 0);
+        if (n <= 0) {
+            free(body);
+            return NULL;
+        }
+        received += n;
     }
-
+    body[received] = '\0';
     return body;
+#undef MAX_BODY_SIZE
 }
 
 void api_parse_query(const char *query,
@@ -52,7 +63,12 @@ void api_parse_query(const char *query,
     key[key_len] = '\0';
 
     val = eq + 1;
-    value_len = strlen(val);
+    const char *amp = strchr(val, '&');
+    if (amp) {
+        value_len = (size_t)(amp - val);
+    } else {
+        value_len = strlen(val);
+    }
     if (value_len >= value_size) {
         value_len = value_size - 1;
     }

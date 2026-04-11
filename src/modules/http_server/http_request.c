@@ -39,7 +39,7 @@ static int parse_request_line(const char *line, HttpRequest *req)
     char path_with_query[HTTP_PATH_MAX];
     char version[HTTP_VERSION_MAX];
 
-    int n = sscanf(line, "%15s %511s %15s", method, path_with_query, version);
+    int n = sscanf(line, "%15s %511s %15s", method, path_with_query, version); /* widths = HTTP_METHOD_MAX-1, HTTP_PATH_MAX-1, HTTP_VERSION_MAX-1 */
     if (n != 3) {
         return -1;
     }
@@ -57,11 +57,11 @@ static int parse_request_line(const char *line, HttpRequest *req)
         req->path[path_len] = '\0';
         
         /* Copy query part */
-        strncpy(req->query, question_mark + 1, HTTP_PATH_MAX);
+        strncpy(req->query, question_mark + 1, HTTP_PATH_MAX - 1);
         req->query[HTTP_PATH_MAX - 1] = '\0';
     } else {
         /* No query string */
-        strncpy(req->path, path_with_query, HTTP_PATH_MAX);
+        strncpy(req->path, path_with_query, HTTP_PATH_MAX - 1);
         req->path[HTTP_PATH_MAX - 1] = '\0';
         req->query[0] = '\0';
     }
@@ -132,6 +132,8 @@ static int parse_header(const char *line, HttpRequest *req)
         req->connection[HTTP_CONN_MAX - 1] = '\0';
     } else if (strcasecmp(header_name, "Range") == 0) {
         parse_range_header(header_value, &req->range_start, &req->range_end);
+    } else if (strcasecmp(header_name, "Content-Length") == 0) {
+        req->content_length = (int64_t)strtoll(header_value, NULL, 10);
     } else if (strcasecmp(header_name, "If-Modified-Since") == 0) {
         strncpy(req->if_modified_since, header_value, sizeof(req->if_modified_since) - 1);
         req->if_modified_since[sizeof(req->if_modified_since) - 1] = '\0';
@@ -149,6 +151,7 @@ lv_error_t http_request_parse(int client_fd, HttpRequest *req)
     memset(req, 0, sizeof(HttpRequest));
     req->range_start = -1;
     req->range_end = -1;
+    req->content_length = -1;
 
     char line[1024];
 

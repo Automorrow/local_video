@@ -20,6 +20,7 @@ typedef struct {
     char connection[HTTP_CONN_MAX];
     int64_t range_start;
     int64_t range_end;
+    int64_t content_length;
     char if_modified_since[64];
 } HttpRequest;
 

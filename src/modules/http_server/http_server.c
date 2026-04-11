@@ -12,6 +12,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <inttypes.h>
 #include <pthread.h>
 
 static volatile int server_running = 0;
@@ -73,12 +74,12 @@ static void *connection_handler(void *arg)
         char video_id_str[64];
         if (sscanf(req.path, "/video/%63s", video_id_str) == 1) {
             int64_t video_id = strtoll(video_id_str, NULL, 10);
-            log_info("Fetching video info for ID: %ld", (long)video_id);
+            log_info("Fetching video info for ID: %" PRId64, video_id);
             VideoInfo video;
             memset(&video, 0, sizeof(video));
             err = db_manager_video_get_by_id(video_id, &video);
             if (err != LV_OK) {
-                log_error("Video not found for ID: %ld", (long)video_id);
+                log_error("Video not found for ID: %" PRId64, video_id);
                 http_response_send_error(client_fd, 404, "Video not found");
             } else {
                 log_info("Video path from DB: %s", video.path);
@@ -241,16 +242,25 @@ lv_error_t http_server_stop(void)
 
     server_running = 0;
 
-    if (server_socket >= 0) {
-        shutdown(server_socket, SHUT_RDWR);
-    }
-
-    pthread_join(server_thread, NULL);
-
+#ifdef _WIN32
     if (server_socket >= 0) {
         sock_close(server_socket);
         server_socket = -1;
     }
+#else
+    if (server_socket >= 0) {
+        shutdown(server_socket, SHUT_RDWR);
+    }
+#endif
+
+    pthread_join(server_thread, NULL);
+
+#ifndef _WIN32
+    if (server_socket >= 0) {
+        sock_close(server_socket);
+        server_socket = -1;
+    }
+#endif
 
     log_info("HTTP server stopped");
     return LV_OK;

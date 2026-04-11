@@ -39,6 +39,7 @@ const char *video_scanner_find_watch_path(int wd);
 #endif
 
 extern volatile int scan_in_progress;
+extern pthread_mutex_t scan_mutex;
 
 int video_scanner_is_video_file(const char *filename);
 void video_scanner_extract_title(const char *path, char *title, size_t title_size);

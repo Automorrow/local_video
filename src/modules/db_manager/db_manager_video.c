@@ -2,6 +2,7 @@
 #include "../../shared/log/log.h"
 #include <stdio.h>
 #include <string.h>
+#include <inttypes.h>
 
 lv_error_t db_manager_video_insert(const char *path, const char *title, const char *category, int64_t size) {
     if (!path || !title || !category) {
@@ -140,13 +141,13 @@ lv_error_t db_manager_video_get_by_id(int64_t id, VideoInfo *out) {
     rc = sqlite3_step(stmt);
     if (rc == SQLITE_ROW) {
         if (sqlite3_column_int(stmt, 6) != 0) {
-            log_warning("Video ID %ld is blacklisted", (long)id);
+            log_warning("Video ID %" PRId64 " is blacklisted", id);
             err = LV_ERROR_DB;
         } else {
             db_fill_video_info(stmt, out);
         }
     } else {
-        log_warning("Video ID %ld not found in database (rc=%d)", (long)id, rc);
+        log_warning("Video ID %" PRId64 " not found in database (rc=%d)", id, rc);
         err = LV_ERROR_DB;
     }
     sqlite3_finalize(stmt);

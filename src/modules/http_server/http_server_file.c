@@ -196,6 +196,18 @@ lv_error_t http_server_serve_static_file(int client_fd,
         return http_response_send_error(client_fd, 403, "Forbidden");
     }
 
+    /* Also reject URL-encoded .. variants (%2e%2e, %2E%2E, etc.) */
+    {
+        const char *p = path;
+        while (*p) {
+            if (strncmp(p, "%2e%2e", 6) == 0 || strncmp(p, "%2E%2e", 6) == 0 ||
+                strncmp(p, "%2e%2E", 6) == 0 || strncmp(p, "%2E%2E", 6) == 0) {
+                return http_response_send_error(client_fd, 403, "Forbidden");
+            }
+            p++;
+        }
+    }
+
     if (strcmp(path, "/") == 0) {
         snprintf(full_path, sizeof(full_path), "%s/index.html", web_root);
     } else {

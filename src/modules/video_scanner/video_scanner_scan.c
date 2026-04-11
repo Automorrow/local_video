@@ -199,7 +199,9 @@ static void *scan_thread_func(void *arg)
     if (!scan_dir) {
         log_error("[扫描] 未指定扫描目录");
         free(directory_copy);
+        pthread_mutex_lock(&scan_mutex);
         scan_in_progress = 0;
+        pthread_mutex_unlock(&scan_mutex);
         return NULL;
     }
 
@@ -210,18 +212,23 @@ static void *scan_thread_func(void *arg)
 
     log_info("[扫描] 扫描完成: 发现/添加 %d 个视频文件", file_count);
     free(directory_copy);
+    pthread_mutex_lock(&scan_mutex);
     scan_in_progress = 0;
+    pthread_mutex_unlock(&scan_mutex);
     return NULL;
 }
 
 lv_error_t video_scanner_scan_impl(const char *directory)
 {
+    pthread_mutex_lock(&scan_mutex);
     if (scan_in_progress) {
+        pthread_mutex_unlock(&scan_mutex);
         log_warning("[扫描] 扫描已在进行中");
         return LV_OK;
     }
 
     scan_in_progress = 1;
+    pthread_mutex_unlock(&scan_mutex);
 
     char *dir_copy = directory ? strdup(directory) : NULL;
     pthread_t thread;
@@ -229,7 +236,9 @@ lv_error_t video_scanner_scan_impl(const char *directory)
     if (ret != 0) {
         log_error("[扫描] 创建扫描线程失败");
         free(dir_copy);
+        pthread_mutex_lock(&scan_mutex);
         scan_in_progress = 0;
+        pthread_mutex_unlock(&scan_mutex);
         return LV_ERROR_UNKNOWN;
     }
 
