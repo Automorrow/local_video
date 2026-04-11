@@ -124,40 +124,47 @@ static void test_video_crud(void) {
 
 static void test_history_crud(void) {
     printf("\n--- Test: History CRUD ---\n");
-    
+
     lv_error_t err = db_manager_init(":memory:");
     TEST_ASSERT(err == LV_OK, "DB init for history tests");
-    
+
     err = db_manager_video_insert("/path/to/video1.mp4", "Test Video 1", "Test", 1024000);
     TEST_ASSERT(err == LV_OK, "Insert video for history test");
-    
+    err = db_manager_video_insert("/path/to/video2.mp4", "Test Video 2", "Test", 1024000);
+    TEST_ASSERT(err == LV_OK, "Insert second video for history test");
+
     int history_count = 0;
     err = db_manager_history_add(1, 100);
     TEST_ASSERT(err == LV_OK, "History add");
-    
+
+    /* Same video consecutive play updates the existing record */
     err = db_manager_history_add(1, 200);
-    TEST_ASSERT(err == LV_OK, "History add second");
-    
+    TEST_ASSERT(err == LV_OK, "History add second (same video updates)");
+
+    /* Different video inserts a new record */
+    err = db_manager_history_add(2, 300);
+    TEST_ASSERT(err == LV_OK, "History add third (different video)");
+
     err = db_manager_history_get(history_callback, &history_count);
     TEST_ASSERT(err == LV_OK, "History get");
     TEST_ASSERT(history_count == 2, "History get returns 2");
-    
+
     err = db_manager_history_delete(1);
     TEST_ASSERT(err == LV_OK, "History delete");
-    
+
     history_count = 0;
     err = db_manager_history_get(history_callback, &history_count);
     TEST_ASSERT(err == LV_OK, "History get after delete");
     TEST_ASSERT(history_count == 1, "History get returns 1 after delete");
-    
+
     err = db_manager_history_clear();
     TEST_ASSERT(err == LV_OK, "History clear");
-    
+
     history_count = 0;
     err = db_manager_history_get(history_callback, &history_count);
     TEST_ASSERT(err == LV_OK, "History get after clear");
     TEST_ASSERT(history_count == 0, "History get returns 0 after clear");
-    
+
     db_manager_close();
 }
 
