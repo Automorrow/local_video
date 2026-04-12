@@ -18,8 +18,10 @@ lv_error_t db_manager_history_add(int64_t video_id, int64_t position) {
         sqlite3_finalize(check_stmt);
     }
 
+    int is_consecutive = (last_video_id == video_id && last_id != -1);
+
     /* If the most recent record is the same video, update it instead of inserting */
-    if (last_video_id == video_id && last_id != -1) {
+    if (is_consecutive) {
         const char *update_sql = "UPDATE history SET position = ?, played_at = strftime('%s', 'now') WHERE id = ?";
         sqlite3_stmt *update_stmt = NULL;
         rc = sqlite3_prepare_v2(g_db, update_sql, -1, &update_stmt, NULL);
@@ -29,26 +31,37 @@ lv_error_t db_manager_history_add(int64_t video_id, int64_t position) {
             sqlite3_step(update_stmt);
             sqlite3_finalize(update_stmt);
         }
-        lv_mutex_unlock(&g_mutex);
-        return LV_OK;
+    } else {
+        const char *sql = "INSERT INTO history (video_id, position) VALUES (?, ?)";
+        sqlite3_stmt *stmt = NULL;
+        rc = sqlite3_prepare_v2(g_db, sql, -1, &stmt, NULL);
+        if (rc != SQLITE_OK) {
+            log_error("Prepare error: %s", sqlite3_errmsg(g_db));
+            lv_mutex_unlock(&g_mutex);
+            return LV_ERROR_DB;
+        }
+        sqlite3_bind_int64(stmt, 1, video_id);
+        sqlite3_bind_int64(stmt, 2, position);
+        rc = sqlite3_step(stmt);
+        sqlite3_finalize(stmt);
+        if (rc != SQLITE_DONE) {
+            lv_mutex_unlock(&g_mutex);
+            return LV_ERROR_DB;
+        }
     }
 
-    const char *sql = "INSERT INTO history (video_id, position) VALUES (?, ?)";
-    sqlite3_stmt *stmt = NULL;
-    rc = sqlite3_prepare_v2(g_db, sql, -1, &stmt, NULL);
-    if (rc != SQLITE_OK) {
-        log_error("Prepare error: %s", sqlite3_errmsg(g_db));
-        lv_mutex_unlock(&g_mutex);
-        return LV_ERROR_DB;
+    /* Increment play_count for this video (only on new plays, not consecutive updates) */
+    if (!is_consecutive) {
+        const char *pc_sql = "UPDATE videos SET play_count = play_count + 1 WHERE id = ?";
+        sqlite3_stmt *pc_stmt = NULL;
+        if (sqlite3_prepare_v2(g_db, pc_sql, -1, &pc_stmt, NULL) == SQLITE_OK) {
+            sqlite3_bind_int64(pc_stmt, 1, video_id);
+            sqlite3_step(pc_stmt);
+            sqlite3_finalize(pc_stmt);
+        }
     }
-    sqlite3_bind_int64(stmt, 1, video_id);
-    sqlite3_bind_int64(stmt, 2, position);
-    rc = sqlite3_step(stmt);
-    sqlite3_finalize(stmt);
+
     lv_mutex_unlock(&g_mutex);
-    if (rc != SQLITE_DONE) {
-        return LV_ERROR_DB;
-    }
     return LV_OK;
 }
 

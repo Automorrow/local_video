@@ -825,14 +825,22 @@ lv_error_t api_browse_directories(int client_fd, const char *query)
 
 #endif
 
-lv_error_t api_get_random(int client_fd)
+lv_error_t api_get_random(int client_fd, const char *query)
 {
     response_buffer_t buf;
     lv_error_t err;
 
+    int64_t exclude_id = 0;
+    if (query) {
+        const char *p = strstr(query, "exclude=");
+        if (p) {
+            exclude_id = (int64_t)atoll(p + 8);
+        }
+    }
+
     api_buffer_init(&buf);
     api_buffer_append_str(&buf, "[");
-    db_manager_video_get_random(1, video_list_callback, &buf);
+    db_manager_video_get_random(1, exclude_id, 10, video_list_callback, &buf);
     api_buffer_append_str(&buf, "]");
 
     err = api_send_json_response(client_fd, buf.data, 200);

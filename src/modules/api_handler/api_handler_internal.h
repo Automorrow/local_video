@@ -33,7 +33,7 @@ int api_get_query_param(const char *query,
                         size_t value_size);
 
 lv_error_t api_get_videos(int client_fd, const char *query);
-lv_error_t api_get_random(int client_fd);
+lv_error_t api_get_random(int client_fd, const char *query);
 lv_error_t api_get_history(int client_fd);
 lv_error_t api_add_history(int client_fd, const char *body);
 lv_error_t api_delete_history(int client_fd, const char *path);

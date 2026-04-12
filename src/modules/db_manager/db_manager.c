@@ -35,6 +35,7 @@ void db_fill_video_info(sqlite3_stmt *stmt, VideoInfo *video) {
     db_copy_text(video->category, sizeof(video->category), sqlite3_column_text(stmt, 3));
     video->size = sqlite3_column_int64(stmt, 4);
     video->created_at = sqlite3_column_int64(stmt, 5);
+    video->play_count = sqlite3_column_int64(stmt, 6);
 }
 
 void db_fill_history_info(sqlite3_stmt *stmt, HistoryInfo *history) {
@@ -138,6 +139,7 @@ lv_error_t db_manager_init(const char *db_path) {
         "    category TEXT NOT NULL,"
         "    size INTEGER NOT NULL,"
         "    blacklisted INTEGER DEFAULT 0,"
+        "    play_count INTEGER DEFAULT 0,"
         "    created_at INTEGER DEFAULT (strftime('%s', 'now'))"
         ");"
         "CREATE TABLE IF NOT EXISTS history ("
@@ -200,6 +202,23 @@ lv_error_t db_manager_init(const char *db_path) {
         sqlite3_free(err_msg);
     } else {
         log_info("Added 'blacklisted' column to videos table");
+    }
+
+    err_msg = NULL;
+    rc = sqlite3_exec(g_db, "ALTER TABLE videos ADD COLUMN play_count INTEGER DEFAULT 0;", NULL, NULL, &err_msg);
+    if (rc != SQLITE_OK) {
+        if (strstr(err_msg, "duplicate column name") == NULL) {
+            log_error("ALTER TABLE error: %s", err_msg);
+            sqlite3_free(err_msg);
+            sqlite3_close(g_db);
+            g_db = NULL;
+            lv_mutex_unlock(&g_mutex);
+            return LV_ERROR_DB;
+        }
+        log_info("Column 'play_count' already exists in videos table");
+        sqlite3_free(err_msg);
+    } else {
+        log_info("Added 'play_count' column to videos table");
     }
 
     lv_mutex_unlock(&g_mutex);

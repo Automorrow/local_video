@@ -17,7 +17,7 @@ lv_error_t api_handler_handle(int client_fd, const HttpRequest *req)
             return api_get_videos(client_fd, req->query[0] ? req->query : NULL);
         }
         if (strcmp(path, "videos/random") == 0 || strcmp(path, "random") == 0) {
-            return api_get_random(client_fd);
+            return api_get_random(client_fd, req->query[0] ? req->query : NULL);
         }
         if (strcmp(path, "history") == 0) {
             return api_get_history(client_fd);

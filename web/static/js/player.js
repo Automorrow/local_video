@@ -73,7 +73,8 @@ export function bindPlayerEvents() {
         }
     });
     elements.playRandomBtn.addEventListener('click', async () => {
-        const data = await api.getRandom();
+        const exclude = state.currentVideo ? state.currentVideo.id : null;
+        const data = await api.getRandom(exclude);
         if (data && data.length > 0) playVideo(data[0], true, true);
     });
     elements.videoPlayer.addEventListener('ended', () => {
@@ -81,7 +82,7 @@ export function bindPlayerEvents() {
             api.postHistory(state.currentVideo.id, Math.floor(elements.videoPlayer.currentTime));
         }
         if (state.isRandomPlay) {
-            api.getRandom().then(data => {
+            api.getRandom(state.currentVideo ? state.currentVideo.id : null).then(data => {
                 if (data && data.length > 0) playVideo(data[0], true, true);
             });
         }

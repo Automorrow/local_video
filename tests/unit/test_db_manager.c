@@ -212,12 +212,69 @@ static void test_favorites_crud(void) {
     db_manager_close();
 }
 
+static void test_play_count_tracking(void) {
+    printf("\n--- Test: Play Count Tracking ---\n");
+
+    lv_error_t err = db_manager_init(":memory:");
+    TEST_ASSERT(err == LV_OK, "DB init for play count tests");
+
+    err = db_manager_video_insert("/path/to/video1.mp4", "Test Video 1", "Test", 1024000);
+    TEST_ASSERT(err == LV_OK, "Insert video for play count test");
+
+    /* Initial play_count should be 0 */
+    VideoInfo video;
+    err = db_manager_video_get_by_id(1, &video);
+    TEST_ASSERT(err == LV_OK, "Get video by id");
+    TEST_ASSERT(video.play_count == 0, "Initial play_count is 0");
+
+    /* First history add should increment play_count */
+    err = db_manager_history_add(1, 100);
+    TEST_ASSERT(err == LV_OK, "History add first play");
+    err = db_manager_video_get_by_id(1, &video);
+    TEST_ASSERT(err == LV_OK, "Get video after first play");
+    TEST_ASSERT(video.play_count == 1, "play_count is 1 after first play");
+
+    /* Consecutive play should NOT increment play_count */
+    err = db_manager_history_add(1, 200);
+    TEST_ASSERT(err == LV_OK, "History add consecutive play");
+    err = db_manager_video_get_by_id(1, &video);
+    TEST_ASSERT(err == LV_OK, "Get video after consecutive play");
+    TEST_ASSERT(video.play_count == 1, "play_count still 1 after consecutive play");
+
+    /* Different video then same video again should increment */
+    err = db_manager_video_insert("/path/to/video2.mp4", "Test Video 2", "Test", 1024000);
+    TEST_ASSERT(err == LV_OK, "Insert second video");
+    err = db_manager_history_add(2, 100);
+    TEST_ASSERT(err == LV_OK, "History add different video");
+    err = db_manager_history_add(1, 300);
+    TEST_ASSERT(err == LV_OK, "History add same video after gap");
+    err = db_manager_video_get_by_id(1, &video);
+    TEST_ASSERT(err == LV_OK, "Get video after gap play");
+    TEST_ASSERT(video.play_count == 2, "play_count is 2 after gap play");
+
+    db_manager_close();
+}
+
+static int random_id_callback(const VideoInfo *video, void *user_data) {
+    int64_t *ids = (int64_t *)user_data;
+    ids[0] = video->id;
+    return 0;
+}
+
+static int collect_ids_callback(const VideoInfo *video, void *user_data) {
+    int64_t **ids_ptr = (int64_t **)user_data;
+    **ids_ptr = video->id;
+    (*ids_ptr)++;
+    return 0;
+}
+
 static void test_random(void) {
     printf("\n--- Test: Random Selection ---\n");
-    
+
     lv_error_t err = db_manager_init(":memory:");
     TEST_ASSERT(err == LV_OK, "DB init for random tests");
-    
+
+    /* Insert 10 videos */
     for (int i = 0; i < 10; i++) {
         char path[128];
         char title[128];
@@ -226,22 +283,69 @@ static void test_random(void) {
         err = db_manager_video_insert(path, title, "Random", 1000000 + i);
         TEST_ASSERT(err == LV_OK, "Insert video for random test");
     }
-    
+
+    /* Insert dummy video for alternating history gaps */
+    err = db_manager_video_insert("/path/to/dummy.mp4", "Dummy", "Random", 100);
+    TEST_ASSERT(err == LV_OK, "Insert dummy video for gap");
+
+    /* Set varying play_counts: video 1=0, 2=10, 3=0, 4=10, etc. */
+    for (int i = 1; i <= 10; i++) {
+        int pc = (i % 2 == 0) ? 10 : 0;
+        for (int p = 0; p < pc; p++) {
+            db_manager_history_add(i, 0);
+            db_manager_history_add(11, 0); /* gap to force next i to increment */
+        }
+    }
+
     video_count = 0;
-    err = db_manager_video_get_random(3, video_callback, &video_count);
+    err = db_manager_video_get_random(3, 0, 0, video_callback, &video_count);
     TEST_ASSERT(err == LV_OK, "Random get 3 videos");
     TEST_ASSERT(video_count == 3, "Random returns 3 videos");
-    
-    video_count = 0;
-    err = db_manager_video_get_random(5, video_callback, &video_count);
-    TEST_ASSERT(err == LV_OK, "Random get 5 videos");
-    TEST_ASSERT(video_count == 5, "Random returns 5 videos");
-    
-    video_count = 0;
-    err = db_manager_video_get_random(10, video_callback, &video_count);
-    TEST_ASSERT(err == LV_OK, "Random get 10 videos");
-    TEST_ASSERT(video_count == 10, "Random returns 10 videos");
-    
+
+    /* Weighted random should favor play_count=0 videos */
+    int low_count_hits = 0;
+    int high_count_hits = 0;
+    for (int t = 0; t < 20; t++) {
+        int64_t id = 0;
+        err = db_manager_video_get_random(1, 0, 0, random_id_callback, &id);
+        if (err == LV_OK && id > 0) {
+            VideoInfo v;
+            if (db_manager_video_get_by_id(id, &v) == LV_OK) {
+                if (v.play_count == 0) low_count_hits++;
+                else high_count_hits++;
+            }
+        }
+    }
+    TEST_ASSERT(low_count_hits > high_count_hits, "Weighted random favors low play_count videos");
+
+    /* Exclude specific video_id */
+    int64_t excluded_id = 1;
+    int excluded_found = 0;
+    for (int t = 0; t < 20; t++) {
+        int64_t id = 0;
+        err = db_manager_video_get_random(1, excluded_id, 0, random_id_callback, &id);
+        if (err == LV_OK && id == excluded_id) {
+            excluded_found++;
+            break;
+        }
+    }
+    TEST_ASSERT(excluded_found == 0, "Random excludes specified video_id");
+
+    /* Count > 1 should return unique videos */
+    int64_t ids[10] = {0};
+    int64_t *ids_ptr = ids;
+    err = db_manager_video_get_random(5, 0, 0, collect_ids_callback, &ids_ptr);
+    TEST_ASSERT(err == LV_OK, "Random get 5 unique videos");
+    int returned = (int)(ids_ptr - ids);
+    TEST_ASSERT(returned == 5, "Random returns 5 videos");
+    int duplicates = 0;
+    for (int i = 0; i < returned; i++) {
+        for (int j = i + 1; j < returned; j++) {
+            if (ids[i] == ids[j]) duplicates++;
+        }
+    }
+    TEST_ASSERT(duplicates == 0, "Random returns 5 unique videos");
+
     db_manager_close();
 }
 
@@ -252,6 +356,7 @@ int main(void) {
     test_video_crud();
     test_history_crud();
     test_favorites_crud();
+    test_play_count_tracking();
     test_random();
     
     printf("\n=== Test Summary ===\n");

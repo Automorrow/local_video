@@ -65,7 +65,7 @@ lv_error_t db_manager_video_get_all(video_callback_t callback, void *user_data) 
     }
     lv_error_t err = LV_OK;
     lv_mutex_lock(&g_mutex);
-    const char *sql = "SELECT id, path, title, category, size, created_at FROM videos WHERE blacklisted = 0 ORDER BY id DESC";
+    const char *sql = "SELECT id, path, title, category, size, created_at, play_count FROM videos WHERE blacklisted = 0 ORDER BY id DESC";
     sqlite3_stmt *stmt = NULL;
     int rc = sqlite3_prepare_v2(g_db, sql, -1, &stmt, NULL);
     if (rc != SQLITE_OK) {
@@ -96,7 +96,7 @@ lv_error_t db_manager_video_get_all_paginated(video_callback_t callback, void *u
     lv_error_t err = LV_OK;
     lv_mutex_lock(&g_mutex);
 
-    const char *sql = "SELECT id, path, title, category, size, created_at FROM videos WHERE blacklisted = 0 ORDER BY id DESC LIMIT ? OFFSET ?";
+    const char *sql = "SELECT id, path, title, category, size, created_at, play_count FROM videos WHERE blacklisted = 0 ORDER BY id DESC LIMIT ? OFFSET ?";
     sqlite3_stmt *stmt = NULL;
     int rc = sqlite3_prepare_v2(g_db, sql, -1, &stmt, NULL);
     if (rc != SQLITE_OK) {
@@ -129,7 +129,7 @@ lv_error_t db_manager_video_get_by_id(int64_t id, VideoInfo *out) {
     }
     lv_error_t err = LV_OK;
     lv_mutex_lock(&g_mutex);
-    const char *sql = "SELECT id, path, title, category, size, created_at, blacklisted FROM videos WHERE id = ?";
+    const char *sql = "SELECT id, path, title, category, size, created_at, play_count, blacklisted FROM videos WHERE id = ?";
     sqlite3_stmt *stmt = NULL;
     int rc = sqlite3_prepare_v2(g_db, sql, -1, &stmt, NULL);
     if (rc != SQLITE_OK) {
@@ -140,7 +140,7 @@ lv_error_t db_manager_video_get_by_id(int64_t id, VideoInfo *out) {
     sqlite3_bind_int64(stmt, 1, id);
     rc = sqlite3_step(stmt);
     if (rc == SQLITE_ROW) {
-        if (sqlite3_column_int(stmt, 6) != 0) {
+        if (sqlite3_column_int(stmt, 7) != 0) {
             log_warning("Video ID %" PRId64 " is blacklisted", id);
             err = LV_ERROR_DB;
         } else {
@@ -161,7 +161,7 @@ lv_error_t db_manager_video_search(const char *query, video_callback_t callback,
     }
     lv_error_t err = LV_OK;
     lv_mutex_lock(&g_mutex);
-    const char *sql = "SELECT id, path, title, category, size, created_at FROM videos "
+    const char *sql = "SELECT id, path, title, category, size, created_at, play_count FROM videos "
                       "WHERE blacklisted = 0 AND (title LIKE ? OR category LIKE ? OR path LIKE ?) "
                       "ORDER BY "
                       "CASE WHEN title LIKE ? THEN 1 "
@@ -205,7 +205,7 @@ lv_error_t db_manager_video_get_by_category(const char *category, video_callback
     }
     lv_error_t err = LV_OK;
     lv_mutex_lock(&g_mutex);
-    const char *sql = "SELECT id, path, title, category, size, created_at FROM videos WHERE category = ? ORDER BY id DESC";
+    const char *sql = "SELECT id, path, title, category, size, created_at, play_count FROM videos WHERE category = ? ORDER BY id DESC";
     sqlite3_stmt *stmt = NULL;
     int rc = sqlite3_prepare_v2(g_db, sql, -1, &stmt, NULL);
     if (rc != SQLITE_OK) {
@@ -302,32 +302,158 @@ lv_error_t db_manager_video_delete_by_path(const char *path) {
     return (rc == SQLITE_DONE) ? LV_OK : LV_ERROR_DB;
 }
 
-lv_error_t db_manager_video_get_random(int count, video_callback_t callback, void *user_data) {
+static int pick_weighted_random_bucket(int *counts, const int *weights, int num_buckets)
+{
+    int total_weight = 0;
+    for (int i = 0; i < num_buckets; i++) {
+        if (counts[i] > 0) total_weight += weights[i];
+    }
+    if (total_weight <= 0) return -1;
+
+    int r = rand() % total_weight;
+    for (int i = 0; i < num_buckets; i++) {
+        if (counts[i] > 0) {
+            r -= weights[i];
+            if (r < 0) return i;
+        }
+    }
+    return -1;
+}
+
+lv_error_t db_manager_video_get_random(int count, int64_t exclude_video_id, int exclude_recent_count, video_callback_t callback, void *user_data) {
     if (!callback || count <= 0) {
         return LV_ERROR_INVALID_ARG;
     }
+
+    /* Cap count to avoid excessive stack usage */
+    if (count > 64) count = 64;
+
+    int64_t selected_ids[64];
+    int selected_count = 0;
     lv_error_t err = LV_OK;
+
+    const char *play_conditions[4] = {
+        "play_count = 0",
+        "play_count BETWEEN 1 AND 2",
+        "play_count BETWEEN 3 AND 5",
+        "play_count > 5"
+    };
+    const int bucket_weights[4] = {40, 30, 20, 10};
+
     lv_mutex_lock(&g_mutex);
-    const char *sql = "SELECT id, path, title, category, size, created_at FROM videos WHERE blacklisted = 0 ORDER BY RANDOM() LIMIT ?";
-    sqlite3_stmt *stmt = NULL;
-    int rc = sqlite3_prepare_v2(g_db, sql, -1, &stmt, NULL);
-    if (rc != SQLITE_OK) {
-        log_error("Prepare error: %s", sqlite3_errmsg(g_db));
-        lv_mutex_unlock(&g_mutex);
-        return LV_ERROR_DB;
-    }
-    sqlite3_bind_int(stmt, 1, count);
-    while ((rc = sqlite3_step(stmt)) == SQLITE_ROW) {
-        VideoInfo video;
-        db_fill_video_info(stmt, &video);
-        if (callback(&video, user_data) != 0) {
-            break;
+
+    for (int round = 0; round < 2 && selected_count < count; round++) {
+        /* round 0: strict filters; round 1: fallback excluding only exclude_video_id */
+        int use_recent = (round == 0 && exclude_recent_count > 0);
+
+        int retries = 0;
+        while (selected_count < count && retries < 20) {
+            int bucket_counts[4] = {0, 0, 0, 0};
+
+            /* Count eligible videos in each bucket */
+            for (int b = 0; b < 4; b++) {
+                char count_sql[512];
+                snprintf(count_sql, sizeof(count_sql),
+                    "SELECT COUNT(*) FROM videos WHERE blacklisted = 0 %s%s AND %s",
+                    (exclude_video_id > 0) ? "AND id != ?" : "",
+                    use_recent ? " AND id NOT IN (SELECT video_id FROM history ORDER BY played_at DESC LIMIT ?)" : "",
+                    play_conditions[b]);
+
+                sqlite3_stmt *stmt = NULL;
+                if (sqlite3_prepare_v2(g_db, count_sql, -1, &stmt, NULL) != SQLITE_OK) continue;
+
+                int param = 1;
+                if (exclude_video_id > 0) {
+                    sqlite3_bind_int64(stmt, param++, exclude_video_id);
+                }
+                if (use_recent) {
+                    sqlite3_bind_int(stmt, param++, exclude_recent_count);
+                }
+
+                if (sqlite3_step(stmt) == SQLITE_ROW) {
+                    bucket_counts[b] = sqlite3_column_int(stmt, 0);
+                }
+                sqlite3_finalize(stmt);
+
+                /* Subtract already-selected videos from this bucket count */
+                for (int s = 0; s < selected_count; s++) {
+                    sqlite3_stmt *check_stmt = NULL;
+                    const char *check_sql = "SELECT 1 FROM videos WHERE id = ? AND blacklisted = 0 AND ?";
+                    if (sqlite3_prepare_v2(g_db, check_sql, -1, &check_stmt, NULL) == SQLITE_OK) {
+                        sqlite3_bind_int64(check_stmt, 1, selected_ids[s]);
+                        sqlite3_bind_text(check_stmt, 2, play_conditions[b], -1, SQLITE_TRANSIENT);
+                        if (sqlite3_step(check_stmt) == SQLITE_ROW) {
+                            bucket_counts[b]--;
+                        }
+                        sqlite3_finalize(check_stmt);
+                    }
+                }
+                if (bucket_counts[b] < 0) bucket_counts[b] = 0;
+            }
+
+            int bucket = pick_weighted_random_bucket(bucket_counts, bucket_weights, 4);
+            if (bucket < 0) {
+                retries++;
+                continue; /* No eligible videos in this round */
+            }
+
+            /* Pick a random offset within the chosen bucket */
+            int offset = rand() % bucket_counts[bucket];
+            char select_sql[512];
+            snprintf(select_sql, sizeof(select_sql),
+                "SELECT id, path, title, category, size, created_at, play_count FROM videos WHERE blacklisted = 0 %s%s AND %s LIMIT 1 OFFSET ?",
+                (exclude_video_id > 0) ? "AND id != ?" : "",
+                use_recent ? " AND id NOT IN (SELECT video_id FROM history ORDER BY played_at DESC LIMIT ?)" : "",
+                play_conditions[bucket]);
+
+            sqlite3_stmt *stmt = NULL;
+            if (sqlite3_prepare_v2(g_db, select_sql, -1, &stmt, NULL) != SQLITE_OK) break;
+
+            int param = 1;
+            if (exclude_video_id > 0) {
+                sqlite3_bind_int64(stmt, param++, exclude_video_id);
+            }
+            if (use_recent) {
+                sqlite3_bind_int(stmt, param++, exclude_recent_count);
+            }
+            sqlite3_bind_int(stmt, param++, offset);
+
+            VideoInfo video;
+            int found = 0;
+            if (sqlite3_step(stmt) == SQLITE_ROW) {
+                db_fill_video_info(stmt, &video);
+                found = 1;
+            }
+            sqlite3_finalize(stmt);
+
+            if (!found) {
+                retries++;
+                continue;
+            }
+
+            /* Check for duplicates */
+            int duplicate = 0;
+            for (int s = 0; s < selected_count; s++) {
+                if (selected_ids[s] == video.id) {
+                    duplicate = 1;
+                    break;
+                }
+            }
+            if (duplicate) {
+                /* If duplicate, try again in same round */
+                retries++;
+                continue;
+            }
+
+            retries = 0;
+            selected_ids[selected_count++] = video.id;
+            if (callback(&video, user_data) != 0) {
+                selected_count = count; /* abort */
+                break;
+            }
         }
     }
-    sqlite3_finalize(stmt);
-    if (rc != SQLITE_DONE && rc != SQLITE_ROW) {
-        err = LV_ERROR_DB;
-    }
+
     lv_mutex_unlock(&g_mutex);
     return err;
 }

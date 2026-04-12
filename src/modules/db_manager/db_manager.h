@@ -11,6 +11,7 @@ typedef struct {
     char category[256];
     int64_t size;
     int64_t created_at;
+    int64_t play_count;
 } VideoInfo;
 
 typedef struct {
@@ -63,7 +64,7 @@ lv_error_t db_manager_favorite_remove(int64_t video_id);
 lv_error_t db_manager_favorites_list(favorite_callback_t callback, void *user_data);
 lv_error_t db_manager_favorite_check(int64_t video_id, bool *out);
 
-lv_error_t db_manager_video_get_random(int count, video_callback_t callback, void *user_data);
+lv_error_t db_manager_video_get_random(int count, int64_t exclude_video_id, int exclude_recent_count, video_callback_t callback, void *user_data);
 lv_error_t db_manager_video_count(int64_t *out_count);
 lv_error_t db_manager_category_get_all(category_callback_t callback, void *user_data);
 

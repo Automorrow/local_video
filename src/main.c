@@ -7,6 +7,7 @@
 #include <stdio.h>
 #include <signal.h>
 #include <stdlib.h>
+#include <time.h>
 
 #ifdef _WIN32
 #include <windows.h>
@@ -45,6 +46,8 @@ int main(int argc, char *argv[])
 
     /* Parse command line args first */
     config_parse_args(argc, argv);
+
+    srand((unsigned int)time(NULL));
 
     log_set_level(LV_LOG_INFO);
     log_info("Local Video Server starting...");

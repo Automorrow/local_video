@@ -21,11 +21,9 @@ export async function openSettings() {
         elements.settingsPort.value = config.port || '';
         settingsSelectedDir = config.scan_directory || '';
         elements.dirSelectedPath.textContent = settingsSelectedDir || 'None';
-        const startPath = settingsSelectedDir ? settingsSelectedDir.substring(0, 3) : '';
-        browseDir(startPath);
-    } else {
-        browseDir('');
     }
+    /* Always start from root so user can freely pick any drive/directory */
+    browseDir('');
 }
 
 export async function browseDir(path) {

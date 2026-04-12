@@ -21,7 +21,7 @@ export const api = {
         return fetchJSON(`${API_BASE}/videos?${params.join('&')}`);
     },
     getFavorites: () => fetchJSON(`${API_BASE}/favorites`),
-    getRandom: () => fetchJSON(`${API_BASE}/random`),
+    getRandom: (exclude) => fetchJSON(`${API_BASE}/random` + (exclude ? `?exclude=${encodeURIComponent(exclude)}` : '')),
     getHistory: () => fetchJSON(`${API_BASE}/history`),
     getBlacklist: () => fetchJSON(`${API_BASE}/blacklist`),
     postBlacklist: (path) => fetchJSON(`${API_BASE}/blacklist`, {
