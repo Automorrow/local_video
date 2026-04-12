@@ -1,6 +1,7 @@
 #include "db_manager_internal.h"
 #include "../../shared/log/log.h"
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <inttypes.h>
 
