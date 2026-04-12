@@ -7,7 +7,7 @@ lv_error_t db_manager_history_add(int64_t video_id, int64_t position) {
     /* Check the most recent history record */
     int64_t last_video_id = -1;
     int64_t last_id = -1;
-    const char *check_sql = "SELECT id, video_id FROM history ORDER BY played_at DESC LIMIT 1";
+    const char *check_sql = "SELECT id, video_id FROM history ORDER BY played_at DESC, id DESC LIMIT 1";
     sqlite3_stmt *check_stmt = NULL;
     int rc = sqlite3_prepare_v2(g_db, check_sql, -1, &check_stmt, NULL);
     if (rc == SQLITE_OK) {
@@ -71,7 +71,7 @@ lv_error_t db_manager_history_get(history_callback_t callback, void *user_data) 
     }
     lv_error_t err = LV_OK;
     lv_mutex_lock(&g_mutex);
-    const char *sql = "SELECT h.id, h.video_id, v.title, v.path, h.position, h.played_at FROM history h INNER JOIN videos v ON h.video_id = v.id WHERE v.blacklisted = 0 ORDER BY h.played_at DESC";
+    const char *sql = "SELECT h.id, h.video_id, v.title, v.path, h.position, h.played_at FROM history h INNER JOIN videos v ON h.video_id = v.id WHERE v.blacklisted = 0 ORDER BY h.played_at DESC, h.id DESC";
     sqlite3_stmt *stmt = NULL;
     int rc = sqlite3_prepare_v2(g_db, sql, -1, &stmt, NULL);
     if (rc != SQLITE_OK) {
